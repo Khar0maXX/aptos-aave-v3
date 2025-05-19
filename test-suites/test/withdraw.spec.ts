@@ -10,21 +10,24 @@ import {
   SupplyFuncAddr,
   WithdrawFuncAddr,
 } from "../configs/supplyBorrow";
-import { ATokenManager, UnderlyingManager, UnderlyingMintFuncAddr } from "../configs/tokens";
+import { ATokenManager, DAI, UnderlyingManager, UnderlyingMintFuncAddr, USDC } from "../configs/tokens";
 import { PoolManager } from "../configs/pool";
 import "../helpers/wadraymath";
-import { GetAssetPriceFuncAddr, OracleManager, SetAssetPriceFuncAddr } from "../configs/oracle";
+import { GetAssetPriceFuncAddr, OracleManager } from "../configs/oracle";
 import { CoreClient } from "../clients/coreClient";
 import { AptosProvider } from "../wrappers/aptosProvider";
 import { ATokensClient } from "../clients/aTokensClient";
 import { UnderlyingTokensClient } from "../clients/underlyingTokensClient";
 import { PoolClient } from "../clients/poolClient";
+import { OracleClient } from "../clients/oracleClient";
+import { priceFeeds } from "../helpers/priceFeeds";
 
 const aptosProvider = AptosProvider.fromEnvs();
 let coreClient: CoreClient;
 let aTokensClient: ATokensClient;
 let underlyingTokensClient: UnderlyingTokensClient;
 let poolClient: PoolClient;
+let oracleClient: OracleClient;
 
 describe("Withdraw Test", () => {
   beforeAll(async () => {
@@ -33,6 +36,7 @@ describe("Withdraw Test", () => {
     aTokensClient = new ATokensClient(aptosProvider, ATokenManager);
     underlyingTokensClient = new UnderlyingTokensClient(aptosProvider, UnderlyingManager);
     poolClient = new PoolClient(aptosProvider, PoolManager);
+    oracleClient = new OracleClient(AptosProvider.fromEnvs(), OracleManager);
   });
 
   it("validateWithdraw() when amount == 0 (revert expected)", async () => {
@@ -49,9 +53,9 @@ describe("Withdraw Test", () => {
   it("validateWithdraw() when amount > user balance (revert expected)", async () => {
     const { users, dai, aDai } = testEnv;
     const user = users[0];
-    const scaleUserBalance = await aTokensClient.scaledBalanceOf(user.accountAddress, aDai);
-    const { reserveLiquidityIndex } = await poolClient.getReserveData2(dai);
-    const userBalance = scaleUserBalance.rayMul(BigNumber.from(reserveLiquidityIndex));
+    const scaledUserBalance = await aTokensClient.scaledBalanceOf(user.accountAddress, aDai);
+    const reserveData = await poolClient.getReserveData(dai);
+    const userBalance = scaledUserBalance.rayMul(BigNumber.from(reserveData.liquidityIndex));
     const newUserBalance = userBalance.add(1000000000000000);
     try {
       coreClient.setSigner(user as Ed25519Account);
@@ -93,11 +97,11 @@ describe("Withdraw Test", () => {
       users: [user, usdcProvider],
     } = testEnv;
 
-    // set price
-    await Transaction(aptos, OracleManager, SetAssetPriceFuncAddr, [usdc, 1]);
-    await Transaction(aptos, OracleManager, SetAssetPriceFuncAddr, [dai, 1]);
+    // set prices
+    await oracleClient.setAssetCustomPrice(usdc, BigNumber.from(1));
+    await oracleClient.setAssetCustomPrice(dai, BigNumber.from(1));
 
-    // dai mint
+    // mint dai for user
     const daiDecimals = (await underlyingTokensClient.decimals(dai)).toNumber();
     const daiDepositAmount = 1000 * 10 ** daiDecimals;
     await Transaction(aptos, UnderlyingManager, UnderlyingMintFuncAddr, [
@@ -106,10 +110,10 @@ describe("Withdraw Test", () => {
       dai,
     ]);
 
-    // dai supply
+    // user supplies dai
     await Transaction(aptos, user, SupplyFuncAddr, [dai, daiDepositAmount, user.accountAddress.toString(), 0]);
 
-    // usdc mint
+    // mint usdc for provider
     const usdcDecimals = (await underlyingTokensClient.decimals(usdc)).toNumber();
     const usdcDepositAmount = 1000 * 10 ** usdcDecimals;
     await Transaction(aptos, UnderlyingManager, UnderlyingMintFuncAddr, [
@@ -118,7 +122,7 @@ describe("Withdraw Test", () => {
       usdc,
     ]);
 
-    // usdc supply
+    // provider supplies usdc
     await Transaction(aptos, usdcProvider, SupplyFuncAddr, [
       usdc,
       usdcDepositAmount,
@@ -126,6 +130,7 @@ describe("Withdraw Test", () => {
       0,
     ]);
 
+    // calculate how much the user can borrow from usdc
     const [usdcPrice] = await View(aptos, GetAssetPriceFuncAddr, [usdc]);
     const [, , availableBorrowsBase, , ,] = await View(aptos, GetUserAccountDataFuncAddr, [
       user.accountAddress.toString(),
@@ -134,21 +139,21 @@ describe("Withdraw Test", () => {
     // console.log("available_borrows_base:", availableBorrowsBase);
     // console.log("amountUSDCToBorrow:", amountUSDCToBorrow);
 
-    // usdc borrow
+    // user borrows usdc
     await Transaction(aptos, user, BorrowFuncAddr, [
       usdc,
-      user.accountAddress.toString(),
       amountUSDCToBorrow,
-      1,
+      2,
       0,
-      true,
+      user.accountAddress,
     ]);
 
-    const daiWithdrawAmount = 500 * 10 ** usdcDecimals;
+    // user now tries to withdraw dai
+    const daiWithdrawAmount = BigNumber.from(500 * 10 ** usdcDecimals);
     try {
-      await Transaction(aptos, user, WithdrawFuncAddr, [dai, daiWithdrawAmount, user.accountAddress.toString()]);
+      await Transaction(aptos, user, WithdrawFuncAddr, [dai, daiWithdrawAmount.toString(), user.accountAddress.toString()]);
     } catch (err) {
-      expect(err.toString().includes("pool_validation: 0x23")).toBe(true);
+      expect(err.toString().includes("validation_logic: 0x23")).toBe(true);
     }
   });
 
@@ -177,5 +182,9 @@ describe("Withdraw Test", () => {
 
     const aDaiBalanceAfter = await aTokensClient.scaledBalanceOf(user1.accountAddress, aDai);
     expect(aDaiBalanceAfter.toString()).toBe(aDaiBalanceBefore.sub(withdrawnAmount).toString());
+    // expect(aDaiBalanceAfter.sub(aDaiBalanceBefore.sub(withdrawnAmount)).isCloseToZero(BigNumber.from(100))).toBe(true);
+
+    const difference = aDaiBalanceAfter.sub(aDaiBalanceBefore.sub(withdrawnAmount));
+    expect(difference.isCloseToZero(BigNumber.from("1000"))).toBe(true);
   });
 });

@@ -1,4 +1,8 @@
+/// @title Pool Data Provider Module
+/// @author Aave
+/// @notice Provides data about the Aave protocol pool and its reserves
 module aave_pool::pool_data_provider {
+    // imports
     use std::string::String;
     use std::vector;
 
@@ -10,23 +14,18 @@ module aave_pool::pool_data_provider {
     use aave_pool::pool;
     use aave_pool::variable_debt_token_factory;
 
+    // Structs
+    /// @notice Data structure containing token information
+    /// @param symbol The token symbol
+    /// @param token_address The token address
     struct TokenData has drop {
         symbol: String,
         token_address: address
     }
 
-    #[test_only]
-    public fun get_reserve_token_symbol(token_data: &TokenData): String {
-        token_data.symbol
-    }
-
-    #[test_only]
-    public fun get_reserve_token_address(token_data: &TokenData): address {
-        token_data.token_address
-    }
-
+    // Public view functions
     #[view]
-    /// @notice Returns the list of the existing reserves in the pool.
+    /// @notice Returns the list of the existing reserves in the pool
     /// @return The list of reserves, pairs of symbols and addresses
     public fun get_all_reserves_tokens(): vector<TokenData> {
         let reserves = pool::get_reserves_list();
@@ -48,7 +47,7 @@ module aave_pool::pool_data_provider {
     }
 
     #[view]
-    /// @notice Returns the list of the existing ATokens in the pool.
+    /// @notice Returns the list of the existing ATokens in the pool
     /// @return The list of ATokens, pairs of symbols and addresses
     public fun get_all_a_tokens(): vector<TokenData> {
         let reserves = pool::get_reserves_list();
@@ -57,7 +56,7 @@ module aave_pool::pool_data_provider {
         for (i in 0..vector::length(&reserves)) {
             let reserve_address = *vector::borrow(&reserves, i);
             let reserve_data = pool::get_reserve_data(reserve_address);
-            let a_token_address = pool::get_reserve_a_token_address(&reserve_data);
+            let a_token_address = pool::get_reserve_a_token_address(reserve_data);
 
             vector::push_back<TokenData>(
                 &mut a_tokens,
@@ -72,7 +71,7 @@ module aave_pool::pool_data_provider {
     }
 
     #[view]
-    /// @notice Returns the list of the existing variable debt Tokens in the pool.
+    /// @notice Returns the list of the existing variable debt Tokens in the pool
     /// @return The list of variableDebtTokens, pairs of symbols and addresses
     public fun get_all_var_tokens(): vector<TokenData> {
         let reserves = pool::get_reserves_list();
@@ -82,7 +81,7 @@ module aave_pool::pool_data_provider {
             let reserve_address = *vector::borrow(&reserves, i);
             let reserve_data = pool::get_reserve_data(reserve_address);
             let var_token_address =
-                pool::get_reserve_variable_debt_token_address(&reserve_data);
+                pool::get_reserve_variable_debt_token_address(reserve_data);
 
             vector::push_back<TokenData>(
                 &mut var_tokens,
@@ -185,16 +184,6 @@ module aave_pool::pool_data_provider {
     }
 
     #[view]
-    /// @notice Returns the unbacked mint cap of the reserve
-    /// @param asset The address of the underlying asset of the reserve
-    /// @return The unbacked mint cap of the reserve
-    public fun get_unbacked_mint_cap(asset: address): u256 {
-        let reserve_configuration = pool::get_reserve_configuration(asset);
-
-        reserve_config::get_unbacked_mint_cap(&reserve_configuration)
-    }
-
-    #[view]
     /// @notice Returns the debt ceiling of the reserve
     /// @param asset The address of the underlying asset of the reserve
     /// @return The debt ceiling of the reserve
@@ -214,7 +203,6 @@ module aave_pool::pool_data_provider {
     #[view]
     /// @notice Returns the reserve data
     /// @param asset The address of the underlying asset of the reserve
-    /// @return unbacked The amount of unbacked tokens
     /// @return accrued_to_treasury_scaled The scaled amount of tokens accrued to treasury that is to be minted
     /// @return total_a_token The total supply of the aToken
     /// @return total_variable_debt The total variable debt of the reserve
@@ -224,24 +212,21 @@ module aave_pool::pool_data_provider {
     /// @return variable_borrow_index The variable borrow index of the reserve
     /// @return last_update_timestamp The timestamp of the last update of the reserve
     public fun get_reserve_data(asset: address):
-        (
-        u256, u256, u256, u256, u256, u256, u256, u256, u64
-    ) {
+        (u256, u256, u256, u256, u256, u256, u256, u64) {
         let reserve_data = pool::get_reserve_data(asset);
-        let a_token_address = pool::get_reserve_a_token_address(&reserve_data);
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
         let variable_token_address =
-            pool::get_reserve_variable_debt_token_address(&reserve_data);
+            pool::get_reserve_variable_debt_token_address(reserve_data);
 
         (
-            (pool::get_reserve_unbacked(&reserve_data) as u256),
-            pool::get_reserve_accrued_to_treasury(&reserve_data),
-            pool::a_token_total_supply(a_token_address),
-            pool::variable_debt_token_total_supply(variable_token_address),
-            (pool::get_reserve_current_liquidity_rate(&reserve_data) as u256),
-            (pool::get_reserve_current_variable_borrow_rate(&reserve_data) as u256),
-            (pool::get_reserve_liquidity_index(&reserve_data) as u256),
-            (pool::get_reserve_variable_borrow_index(&reserve_data) as u256),
-            pool::get_reserve_last_update_timestamp(&reserve_data)
+            pool::get_reserve_accrued_to_treasury(reserve_data),
+            a_token_factory::total_supply(a_token_address),
+            variable_debt_token_factory::total_supply(variable_token_address),
+            (pool::get_reserve_current_liquidity_rate(reserve_data) as u256),
+            (pool::get_reserve_current_variable_borrow_rate(reserve_data) as u256),
+            (pool::get_reserve_liquidity_index(reserve_data) as u256),
+            (pool::get_reserve_variable_borrow_index(reserve_data) as u256),
+            pool::get_reserve_last_update_timestamp(reserve_data)
         )
     }
 
@@ -251,9 +236,9 @@ module aave_pool::pool_data_provider {
     /// @return The total supply of the aToken
     public fun get_a_token_total_supply(asset: address): u256 {
         let reserve_data = pool::get_reserve_data(asset);
-        let a_token_address = pool::get_reserve_a_token_address(&reserve_data);
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
 
-        pool::a_token_total_supply(a_token_address)
+        a_token_factory::total_supply(a_token_address)
     }
 
     #[view]
@@ -263,9 +248,9 @@ module aave_pool::pool_data_provider {
     public fun get_total_debt(asset: address): u256 {
         let reserve_data = pool::get_reserve_data(asset);
         let variable_token_address =
-            pool::get_reserve_variable_debt_token_address(&reserve_data);
+            pool::get_reserve_variable_debt_token_address(reserve_data);
 
-        pool::variable_debt_token_total_supply(variable_token_address)
+        variable_debt_token_factory::total_supply(variable_token_address)
     }
 
     #[view]
@@ -280,23 +265,23 @@ module aave_pool::pool_data_provider {
     public fun get_user_reserve_data(asset: address, user: address):
         (u256, u256, u256, u256, bool) {
         let reserve_data = pool::get_reserve_data(asset);
-        let a_token_address = pool::get_reserve_a_token_address(&reserve_data);
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
         let variable_token_address =
-            pool::get_reserve_variable_debt_token_address(&reserve_data);
+            pool::get_reserve_variable_debt_token_address(reserve_data);
 
-        let current_a_token_balance = pool::a_token_balance_of(user, a_token_address);
+        let current_a_token_balance = a_token_factory::balance_of(user, a_token_address);
         let current_variable_debt =
-            pool::variable_debt_token_balance_of(user, variable_token_address);
+            variable_debt_token_factory::balance_of(user, variable_token_address);
         let scaled_variable_debt =
             variable_debt_token_factory::scaled_balance_of(user, variable_token_address);
         let liquidity_rate =
-            (pool::get_reserve_current_liquidity_rate(&reserve_data) as u256);
+            (pool::get_reserve_current_liquidity_rate(reserve_data) as u256);
 
         let user_configuration = pool::get_user_configuration(user);
         let usage_as_collateral_enabled =
             user_config::is_using_as_collateral(
                 &user_configuration,
-                (pool::get_reserve_id(&reserve_data) as u256)
+                (pool::get_reserve_id(reserve_data) as u256)
             );
 
         (
@@ -317,8 +302,8 @@ module aave_pool::pool_data_provider {
         let reserve_data = pool::get_reserve_data(asset);
 
         (
-            pool::get_reserve_a_token_address(&reserve_data),
-            pool::get_reserve_variable_debt_token_address(&reserve_data)
+            pool::get_reserve_a_token_address(reserve_data),
+            pool::get_reserve_variable_debt_token_address(reserve_data)
         )
     }
 
@@ -330,5 +315,31 @@ module aave_pool::pool_data_provider {
         let reserve_configuration = pool::get_reserve_configuration(asset);
 
         reserve_config::get_flash_loan_enabled(&reserve_configuration)
+    }
+
+    #[view]
+    /// @notice Returns the current deficit of a reserve
+    /// @param asset The address of the underlying asset of the reserve
+    /// @return The current deficit of the reserve
+    public fun get_reserve_deficit(asset: address): u128 {
+        let reserve = pool::get_reserve_data(asset);
+        pool::get_reserve_deficit(reserve)
+    }
+
+    // Test only functions
+    #[test_only]
+    /// @notice Returns the reserve token symbol from TokenData (for testing)
+    /// @param token_data The TokenData structure
+    /// @return The token symbol
+    public fun get_reserve_token_symbol(token_data: &TokenData): String {
+        token_data.symbol
+    }
+
+    #[test_only]
+    /// @notice Returns the reserve token address from TokenData (for testing)
+    /// @param token_data The TokenData structure
+    /// @return The token address
+    public fun get_reserve_token_address(token_data: &TokenData): address {
+        token_data.token_address
     }
 }

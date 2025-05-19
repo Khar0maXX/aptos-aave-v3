@@ -1,4 +1,4 @@
-name: Unit Tests
+name: Unit Tests & Coverage
 
 on:
   pull_request:
@@ -10,9 +10,26 @@ env:
   CARGO_TERM_COLOR: always
   GITHUB_ACTIONS: true
   APTOS_NETWORK: local
-  UPGRADE_CONTRACTS: false
+  MOVE_VERSION: 2.1
+  COMPILER_VERSION: 2.0
+  UPGRADE_CONTRACTS: true
   ARTIFACTS_LEVEL: all
   DEFAULT_FUND_AMOUNT: 40000000
+  DEFAULT_FUNDER_PRIVATE_KEY: ${{ secrets.GH_DEFAULT_FUNDER_PRIVATE_KEY }}
+
+  # aave profiles
+  AAVE_ACL_PRIVATE_KEY: ${{ secrets.GH_AAVE_ACL_PRIVATE_KEY }}
+  AAVE_CONFIG_PRIVATE_KEY: ${{ secrets.GH_AAVE_CONFIG_PRIVATE_KEY }}
+  AAVE_MATH_PRIVATE_KEY: ${{ secrets.GH_AAVE_MATH_PRIVATE_KEY }}
+  AAVE_ORACLE_PRIVATE_KEY: ${{ secrets.GH_AAVE_ORACLE_PRIVATE_KEY }}
+  AAVE_POOL_PRIVATE_KEY: ${{ secrets.GH_AAVE_POOL_PRIVATE_KEY }}
+  A_TOKENS_PRIVATE_KEY: ${{ secrets.GH_A_TOKENS_PRIVATE_KEY }}
+  AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY: ${{ secrets.GH_AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY }}
+  VARIABLE_TOKENS_PRIVATE_KEY: ${{ secrets.GH_VARIABLE_TOKENS_PRIVATE_KEY }}
+  AAVE_LARGE_PACKAGES_PRIVATE_KEY: ${{ secrets.GH_AAVE_LARGE_PACKAGES_PRIVATE_KEY }}
+  AAVE_DATA_PRIVATE_KEY: ${{ secrets.GH_AAVE_DATA_PRIVATE_KEY }}
+  AAVE_DATA_FEEDS_PRIVATE_KEY: ${{ secrets.GH_AAVE_DATA_FEEDS_PRIVATE_KEY }}
+  AAVE_PLATFORM_PRIVATE_KEY: ${{ secrets.GH_AAVE_PLATFORM_PRIVATE_KEY }}
 
 jobs:
   unit-tests:
@@ -23,10 +40,11 @@ jobs:
       DEFAULT_FUNDER_PRIVATE_KEY: ${{ secrets.GH_DEFAULT_FUNDER_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Aptos CLI
-        run: |
-          curl -fsSL "https://aptos.dev/scripts/install_cli.py" | python3
-          aptos --version  # Verify that Aptos CLI is installed
+        uses: ./.github/actions/install-aptos-cli
+        with:
+          version: "6.2.0"
 
       - name: Run Aptos Create Local Testnet
         run: |
@@ -53,6 +71,24 @@ jobs:
 
       - name: Run Aptos Test All Contracts
         run: make test-all
+
+      - name: Run Coverage for All Contracts
+        run: make coverage-all
+
+      - name: Compute Move Coverage
+        run: |
+          chmod +x coverage/coverage.py
+          python3 coverage/coverage.py
+
+      - name: Upload to Codecov.io
+        uses: codecov/codecov-action@v5
+        with:
+          name: move-coverage
+          flags: move
+          fail_ci_if_error: true
+          verbose: true
+          files: coverage.lcov
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Terminate Aptos Local Testnet
         if: always()

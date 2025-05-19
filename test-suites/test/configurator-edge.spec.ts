@@ -11,13 +11,11 @@ import {
   PoolConfiguratorSetEmodeCategoryFuncAddr,
   PoolConfiguratorSetReserveFactorFuncAddr,
   PoolConfiguratorSetSupplyCapFuncAddr,
-  PoolConfiguratorSetUnbackedMintCapFuncAddr,
-  PoolConfiguratorUpdateBridgeProtocolFeeFuncAddr,
   PoolConfiguratorUpdateFlashloanPremiumToProtocolFuncAddr,
   PoolConfiguratorUpdateFlashloanPremiumTotalFuncAddr,
   PoolManager,
 } from "../configs/pool";
-import { MAX_BORROW_CAP, MAX_SUPPLY_CAP, MAX_UNBACKED_MINT_CAP, ZERO_ADDRESS } from "../helpers/constants";
+import { MAX_BORROW_CAP, MAX_SUPPLY_CAP, ZERO_ADDRESS } from "../helpers/constants";
 
 describe("PoolConfigurator: Edge cases", () => {
   beforeAll(async () => {
@@ -34,7 +32,7 @@ describe("PoolConfigurator: Edge cases", () => {
         65535 + 1,
       ]);
     } catch (err) {
-      expect(err.toString().includes("reserve: 0x41")).toBe(true);
+      expect(err.toString().includes("reserve_config: 0x41")).toBe(true);
     }
   });
 
@@ -115,15 +113,6 @@ describe("PoolConfigurator: Edge cases", () => {
     }
   });
 
-  it("Tries to bridge protocol fee > PERCENTAGE_FACTOR (revert expected)", async () => {
-    const newProtocolFee = 10001;
-    try {
-      await Transaction(aptos, PoolManager, PoolConfiguratorUpdateBridgeProtocolFeeFuncAddr, [newProtocolFee]);
-    } catch (err) {
-      expect(err.toString().includes("pool_configurator: 0x16")).toBe(true);
-    }
-  });
-
   it("Tries to update flashloan premium total > PERCENTAGE_FACTOR (revert expected)", async () => {
     const newPremiumTotal = 10001;
     try {
@@ -152,7 +141,7 @@ describe("PoolConfigurator: Edge cases", () => {
         BigNumber.from(MAX_BORROW_CAP).add(1).toString(),
       ]);
     } catch (err) {
-      expect(err.toString().includes("reserve: 0x44")).toBe(true);
+      expect(err.toString().includes("reserve_config: 0x44")).toBe(true);
     }
   });
 
@@ -164,19 +153,7 @@ describe("PoolConfigurator: Edge cases", () => {
         BigNumber.from(MAX_SUPPLY_CAP).add(1).toString(),
       ]);
     } catch (err) {
-      expect(err.toString().includes("reserve: 0x45")).toBe(true);
-    }
-  });
-
-  it("Tries to update unbackedMintCap > MAX_UNBACKED_MINT_CAP (revert expected)", async () => {
-    const { weth } = testEnv;
-    try {
-      await Transaction(aptos, PoolManager, PoolConfiguratorSetUnbackedMintCapFuncAddr, [
-        weth,
-        BigNumber.from(MAX_UNBACKED_MINT_CAP).add(1).toString(),
-      ]);
-    } catch (err) {
-      expect(err.toString().includes("reserve: 0x48")).toBe(true);
+      expect(err.toString().includes("reserve_config: 0x45")).toBe(true);
     }
   });
 
@@ -199,7 +176,6 @@ describe("PoolConfigurator: Edge cases", () => {
         9800,
         9800,
         10100,
-        ZERO_ADDRESS,
         "INVALID_ID_CATEGORY",
       ]);
     } catch (err) {
@@ -214,7 +190,6 @@ describe("PoolConfigurator: Edge cases", () => {
         9900,
         9800,
         10100,
-        ZERO_ADDRESS,
         "STABLECOINS",
       ]);
     } catch (err) {
@@ -229,7 +204,6 @@ describe("PoolConfigurator: Edge cases", () => {
         9800,
         9800,
         10000,
-        ZERO_ADDRESS,
         "STABLECOINS",
       ]);
     } catch (err) {
@@ -244,7 +218,6 @@ describe("PoolConfigurator: Edge cases", () => {
         9800,
         9800,
         11000,
-        ZERO_ADDRESS,
         "STABLECOINS",
       ]);
     } catch (err) {
@@ -259,7 +232,6 @@ describe("PoolConfigurator: Edge cases", () => {
         9800,
         10100,
         10100,
-        ZERO_ADDRESS,
         "STABLECOINS",
       ]);
     } catch (err) {
@@ -272,7 +244,6 @@ describe("PoolConfigurator: Edge cases", () => {
     try {
       await Transaction(aptos, PoolManager, PoolConfiguratorSetAssetEmodeCategoryFuncAddr, [dai, 100]);
     } catch (err) {
-      console.log("err:", err.toString());
       expect(err.toString().includes("pool_configurator: 0x11")).toBe(true);
     }
   });
@@ -285,7 +256,6 @@ describe("PoolConfigurator: Edge cases", () => {
       ltv.toString(),
       BigNumber.from(liquidationThreshold).sub(1).toString(),
       10100,
-      ZERO_ADDRESS,
       "LT_TOO_LOW_FOR_DAI",
     ]);
     try {

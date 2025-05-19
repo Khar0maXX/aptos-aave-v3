@@ -15,7 +15,6 @@ AptosToken = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "a
 AptosTokenObjects = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-token-objects", rev = "mainnet" }
 AaveAcl = { local = "../aave-acl" }
 AaveConfig = { local = "../aave-config" }
-AaveRate = { local = "../aave-rate" }
 AaveOracle = { local = "../aave-oracle" }
 AaveData = { local = "../aave-data" }
 AavePool = { local = "../" }

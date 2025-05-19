@@ -3,13 +3,15 @@ module aave_pool::coin_migrator_tests {
     use std::signer;
     use std::option;
     use std::string::{Self, String};
+    use std::vector;
     use aptos_framework::account::{Self};
     use aptos_framework::coin::{Self};
     use aptos_framework::fungible_asset::{Self, Metadata};
     use aptos_framework::aggregator_factory::initialize_aggregator_factory_for_test;
+    use aptos_framework::event::emitted_events;
     use aptos_framework::object;
     use aptos_framework::primary_fungible_store;
-    use aave_pool::coin_migrator::Self;
+    use aave_pool::coin_migrator::{Self, CoinToFaConvertion};
 
     const TEST_SUCCESS: u64 = 1;
     const TEST_FAILED: u64 = 2;
@@ -117,19 +119,16 @@ module aave_pool::coin_migrator_tests {
         // get the metadata needed for the new fa, do assertions
         let wrapped_fa_meta =
             option::destroy_some(coin::paired_metadata<GenericAptosCoin>());
-        let wrapped_fa_address = object::object_address(&wrapped_fa_meta);
         let wrapped_fa_meta2 = fungible_asset::metadata_from_asset(&wrapped_fa);
         assert!(wrapped_fa_meta == wrapped_fa_meta2, TEST_SUCCESS);
         let fa_supply = fungible_asset::supply(wrapped_fa_meta);
         let fa_decimals = fungible_asset::decimals(wrapped_fa_meta);
         let fa_symbol = fungible_asset::symbol(wrapped_fa_meta);
         let fa_name = fungible_asset::name(wrapped_fa_meta);
-        let fa_balance = fungible_asset::balance(wrapped_fa_meta);
         assert!(fa_supply == option::some((withdrawn_amount as u128)), TEST_SUCCESS);
         assert!(fa_decimals == coin_decimals, TEST_SUCCESS);
         assert!(fa_symbol == coin_symbol, TEST_SUCCESS);
         assert!(fa_name == coin_name, TEST_SUCCESS);
-        assert!(fa_balance == 0, TEST_SUCCESS);
 
         // get data for alice and bob wallet for the FungibleAsset
         let alice_wallet =
@@ -259,7 +258,13 @@ module aave_pool::coin_migrator_tests {
         coin::deposit(signer::address_of(alice), coins_minted);
 
         // Alice converts her coins for fas
-        coin_migrator::coin_to_fa<GenericAptosCoin>(alice, alice_init_balance);
+        coin_migrator::coin_to_fa<GenericAptosCoin>(alice, alice_init_balance / 2);
+        coin_migrator::coin_to_fa<GenericAptosCoin>(alice, alice_init_balance / 2);
+
+        // check CointToFaConvertion emitted events
+        let emitted_events = emitted_events<CoinToFaConvertion>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 2, TEST_SUCCESS);
 
         // use coin migrator to obtain the fa address
         let fa_address = coin_migrator::get_fa_address<GenericAptosCoin>();
@@ -280,16 +285,181 @@ module aave_pool::coin_migrator_tests {
         assert!(
             fungible_asset::balance(alice_wallet) == alice_init_balance, TEST_SUCCESS
         );
+    }
 
-        // now alice converts her fas back to coins
-        coin_migrator::fa_to_coin<GenericAptosCoin>(alice, alice_init_balance);
+    #[
+        test(
+            framework = @aptos_framework,
+            aave_pool = @aave_pool,
+            alice = @0x123,
+            bob = @0x234
+        )
+    ]
+    #[expected_failure(abort_code = 1415, location = aave_pool::coin_migrator)]
+    fun test_coin_to_fa_when_insufficient_coins_to_wrap(
+        framework: &signer,
+        aave_pool: &signer,
+        alice: &signer,
+        bob: &signer
+    ) acquires GenericAptosCoinRefs {
+        // init a coin conversion map
+        coin::create_coin_conversion_map(framework);
 
-        // assert
-        assert!(
-            coin::balance<GenericAptosCoin>(signer::address_of(alice))
-                == alice_init_balance,
-            TEST_SUCCESS
+        // create test accounts
+        account::create_account_for_test(signer::address_of(alice));
+        account::create_account_for_test(signer::address_of(bob));
+
+        // initialize old-style aptos coin
+        let coin_name = string::utf8(b"Generic Coin");
+        let coin_symbol = string::utf8(b"GCC");
+        let coin_decimals = 2;
+
+        initialize_aptos_coin(
+            framework,
+            aave_pool,
+            coin_decimals,
+            true,
+            coin_name,
+            coin_symbol
         );
-        assert!(fungible_asset::balance(alice_wallet) == 0, TEST_SUCCESS);
+
+        // register the alice and bob
+        coin::register<GenericAptosCoin>(alice);
+        coin::register<GenericAptosCoin>(bob);
+
+        // mint some coins
+        let alice_init_balance = 100;
+        let coins_minted =
+            coin::mint<GenericAptosCoin>(
+                alice_init_balance, &get_coin_refs(aave_pool).mint_ref
+            );
+
+        // deposit to alice
+        coin::deposit(signer::address_of(alice), coins_minted);
+
+        // Alice tries to convert more coins than she has
+        coin_migrator::coin_to_fa<GenericAptosCoin>(alice, alice_init_balance + 1);
+    }
+
+    #[test(framework = @aptos_framework, aave_pool = @aave_pool, alice = @0x123)]
+    #[expected_failure(abort_code = 1415, location = aave_pool::coin_migrator)]
+    fun test_coin_to_fa_when_coin_balance_is_zero_to_wrap(
+        framework: &signer, aave_pool: &signer, alice: &signer
+    ) {
+        // init a coin conversion map
+        coin::create_coin_conversion_map(framework);
+
+        let alice_address = signer::address_of(alice);
+        // create test accounts
+        account::create_account_for_test(alice_address);
+
+        // initialize old-style aptos coin
+        let coin_name = string::utf8(b"Generic Coin");
+        let coin_symbol = string::utf8(b"GCC");
+        let coin_decimals = 4;
+
+        initialize_aptos_coin(
+            framework,
+            aave_pool,
+            coin_decimals,
+            true,
+            coin_name,
+            coin_symbol
+        );
+
+        // register the alice
+        coin::register<GenericAptosCoin>(alice);
+
+        // no mint
+        let alice_balance = coin::balance<GenericAptosCoin>(alice_address);
+        assert!(alice_balance == 0, TEST_SUCCESS);
+
+        // Alice tries to convert coins
+        let alice_init_balance = 100;
+        coin_migrator::coin_to_fa<GenericAptosCoin>(alice, alice_init_balance);
+    }
+
+    #[test(framework = @aptos_framework, aave_pool = @aave_pool, alice = @0x123)]
+    fun test_fa_to_coin_migration(
+        framework: &signer, aave_pool: &signer, alice: &signer
+    ) acquires GenericAptosCoinRefs {
+        // init a coin conversion map
+        coin::create_coin_conversion_map(framework);
+
+        let alice_address = signer::address_of(alice);
+        // create test accounts
+        account::create_account_for_test(alice_address);
+
+        // initialize old-style aptos coin
+        let coin_name = string::utf8(b"Generic Coin");
+        let coin_symbol = string::utf8(b"GCC");
+        let coin_decimals = 4;
+
+        initialize_aptos_coin(
+            framework,
+            aave_pool,
+            coin_decimals,
+            true,
+            coin_name,
+            coin_symbol
+        );
+
+        // register the alice
+        coin::register<GenericAptosCoin>(alice);
+
+        // mint some coins
+        let alice_init_balance = 100;
+        let coins_minted =
+            coin::mint<GenericAptosCoin>(
+                alice_init_balance, &get_coin_refs(aave_pool).mint_ref
+            );
+
+        // deposit to alice
+        coin::deposit(alice_address, coins_minted);
+
+        // Alice converts her coins for fas
+        coin_migrator::coin_to_fa<GenericAptosCoin>(alice, alice_init_balance);
+
+        // use coin migrator to obtain the fa address
+        let fa_address = coin_migrator::get_fa_address<GenericAptosCoin>();
+
+        // get metadata and alice fung. asset store
+        let wrapped_fa_meta = object::address_to_object<Metadata>(fa_address);
+        let alice_wallet =
+            primary_fungible_store::ensure_primary_store_exists(
+                alice_address, wrapped_fa_meta
+            );
+        let alice_fa_balance = fungible_asset::balance(alice_wallet);
+        assert!(alice_fa_balance == alice_init_balance, TEST_SUCCESS);
+    }
+
+    #[test(framework = @aptos_framework, aave_pool = @aave_pool, alice = @0x123)]
+    #[expected_failure(abort_code = 1417, location = aave_pool::coin_migrator)]
+    fun test_get_fa_address_when_unmapped_coin_to_fa(
+        framework: &signer, aave_pool: &signer, alice: &signer
+    ) {
+        // init a coin conversion map
+        coin::create_coin_conversion_map(framework);
+
+        let alice_address = signer::address_of(alice);
+        // create test accounts
+        account::create_account_for_test(alice_address);
+
+        // initialize old-style aptos coin
+        let coin_name = string::utf8(b"Generic Coin");
+        let coin_symbol = string::utf8(b"GCC");
+        let coin_decimals = 6;
+
+        initialize_aptos_coin(
+            framework,
+            aave_pool,
+            coin_decimals,
+            true,
+            coin_name,
+            coin_symbol
+        );
+
+        // Alice tries to get the fa address for an unmapped coin
+        coin_migrator::get_fa_address<GenericAptosCoin>();
     }
 }

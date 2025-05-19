@@ -20,6 +20,7 @@ declare module "@ethersproject/bignumber" {
     rayToWad: () => BigNumber;
     wadToRay: () => BigNumber;
     negated: () => BigNumber;
+    isCloseToZero: (tolerance: BigNumber) => boolean;
   }
 }
 
@@ -78,6 +79,11 @@ BigNumber.prototype.wadToRay = function (): BigNumber {
 BigNumber.prototype.negated = function (): BigNumber {
   return this.mul(-1);
 };
+
+// eslint-disable-next-line func-names
+BigNumber.prototype.isCloseToZero = function (tolerance: BigNumber = BigNumber.from(1)): boolean {
+  return this.abs().lte(tolerance);
+}
 
 export class BigNumberWrapper {
   // eslint-disable-next-line class-methods-use-this
@@ -154,5 +160,10 @@ export class BigNumberWrapper {
   // eslint-disable-next-line class-methods-use-this
   public negated(a: BigNumber): BigNumber {
     return a.negated();
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  public isCloseToZero(a: BigNumber, tolerance?: BigNumber): boolean {
+    return a.isCloseToZero(tolerance);
   }
 }

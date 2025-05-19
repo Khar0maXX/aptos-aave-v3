@@ -24,7 +24,7 @@ describe("Pool: Drop Reserve", () => {
     try {
       await Transaction(aptos, PoolManager, PoolConfiguratorDropReserveFuncAddr, [ZERO_ADDRESS]);
     } catch (err) {
-      expect(err.toString().includes("pool: 0x4d")).toBe(true);
+      expect(err.toString().includes("pool_token_logic: 0x4d")).toBe(true);
     }
   });
 });

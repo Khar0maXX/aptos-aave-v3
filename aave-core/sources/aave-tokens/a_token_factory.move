@@ -1,29 +1,37 @@
+/// @title a_token_factory Module
+/// @author Aave
+/// @notice Factory module for creating and managing aTokens in the Aave protocol
+/// @dev This module manages the creation, minting, burning, and various operations of aTokens
 module aave_pool::a_token_factory {
+    // imports
     use std::option;
+    use std::option::Option;
     use std::signer;
-    use std::string::{Self, String};
+    use std::string::String;
     use aptos_std::smart_table;
     use aptos_std::smart_table::SmartTable;
-    use aptos_std::string_utils::format2;
     use aptos_framework::account;
     use aptos_framework::account::SignerCapability;
-    use aptos_framework::event::Self;
+    use aptos_framework::event;
     use aptos_framework::fungible_asset;
     use aptos_framework::fungible_asset::Metadata;
-    use aptos_framework::object::{Self, Object};
+    use aptos_framework::object;
+    use aptos_framework::object::Object;
 
     use aave_acl::acl_manage;
     use aave_config::error_config;
     use aave_math::wad_ray_math;
-
+    use aave_pool::token_base::only_pool_admin;
+    use aave_pool::pool;
     use aave_pool::fungible_asset_manager;
     use aave_pool::token_base;
+    use aave_pool::events::Self;
 
-    friend aave_pool::pool;
+    // friend modules
+    friend aave_pool::pool_token_logic;
     friend aave_pool::flashloan_logic;
     friend aave_pool::supply_logic;
     friend aave_pool::borrow_logic;
-    friend aave_pool::bridge_logic;
     friend aave_pool::liquidation_logic;
 
     #[test_only]
@@ -31,86 +39,318 @@ module aave_pool::a_token_factory {
     #[test_only]
     friend aave_pool::pool_configurator_tests;
     #[test_only]
-    friend aave_pool::ui_incentive_data_provider_v3;
+    friend aave_pool::ui_incentive_data_provider_v3_tests;
     #[test_only]
-    friend aave_pool::ui_pool_data_provider_v3;
-    // #[test_only]
-    // friend aave_pool::emission_manager_tests;
-    // #[test_only]
-    // friend aave_pool::rewards_controller_tests;
+    friend aave_pool::ui_pool_data_provider_v3_tests;
+    #[test_only]
+    friend aave_pool::emission_manager_tests;
+    #[test_only]
+    friend aave_pool::rewards_controller_tests;
+    #[test_only]
+    friend aave_pool::collector_tests;
 
-    const ATOKEN_REVISION: u256 = 0x1;
+    // Error constants
 
+    // Global Constants
+
+    // Structs and Events
     #[event]
-    /// @dev Emitted when an aToken is initialized
+    /// @notice Emitted when an aToken is initialized
     /// @param underlying_asset The address of the underlying asset
     /// @param treasury The address of the treasury
+    /// @param incentives_controller The address of the incentives controller
     /// @param a_token_decimals The decimals of the underlying
     /// @param a_token_name The name of the aToken
     /// @param a_token_symbol The symbol of the aToken
     struct Initialized has store, drop {
         underlying_asset: address,
         treasury: address,
+        incentives_controller: Option<address>,
         a_token_decimals: u8,
         a_token_name: String,
         a_token_symbol: String
     }
 
-    #[event]
-    /// @dev Emitted during the transfer action
-    /// @param from The user whose tokens are being transferred
-    /// @param to The recipient
-    /// @param value The scaled amount being transferred
-    /// @param index The next liquidity index of the reserve
-    struct BalanceTransfer has store, drop {
-        from: address,
-        to: address,
-        value: u256,
-        index: u256
-    }
-
-    struct TokenData has store, drop {
+    #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
+    /// @notice Data structure that stores aToken-specific information
+    /// @param underlying_asset The address of the underlying asset
+    /// @param treasury The address of the treasury
+    /// @param signer_cap The signer capability for the resource account
+    struct TokenData has key, drop {
         underlying_asset: address,
         treasury: address,
         signer_cap: SignerCapability
     }
 
-    // Atoken metadata_address => TokenData
+    /// @notice Bi-directional mapping between underlying tokens and aTokens
+    /// @dev This serves two purposes:
+    /// 1. Ensures the same underlying token has only one aToken (underlying_to_token)
+    /// 2. Provides quick lookup to check if an address is an aToken (token_to_underlying)
+    /// @param underlying_to_token Maps underlying token address to aToken address
+    /// @param token_to_underlying Maps aToken address to underlying token address
     struct TokenMap has key {
-        value: SmartTable<address, TokenData>,
-        count: u256
+        underlying_to_token: SmartTable<address, address>,
+        token_to_underlying: SmartTable<address, address>
     }
 
-    fun init_module(signer: &signer) {
-        token_base::only_token_admin(signer);
-        move_to(
-            signer,
-            TokenMap {
-                value: smart_table::new<address, TokenData>(),
-                count: 0
-            }
+    // Public view functions
+    #[view]
+    /// @notice Checks if the given address represents an aToken
+    /// @param metadata_address The address to check
+    /// @return True if the address is an aToken, false otherwise
+    public fun is_atoken(metadata_address: address): bool acquires TokenMap {
+        let token_map = borrow_global<TokenMap>(@aave_pool);
+        smart_table::contains(&token_map.token_to_underlying, metadata_address)
+            && object::object_exists<TokenData>(metadata_address)
+    }
+
+    #[view]
+    /// @notice Retrieves the account address of the managed fungible asset for a specific aToken
+    /// @dev Creates a signer capability for the resource account managing the fungible asset
+    /// @param metadata_address The address of the aToken
+    /// @return The address of the managed fungible asset account
+    public fun get_token_account_address(
+        metadata_address: address
+    ): address acquires TokenData, TokenMap {
+        assert_token_exists(metadata_address);
+        let token_data = get_token_data(metadata_address);
+        let account_signer = get_token_account_with_signer(token_data);
+        signer::address_of(&account_signer)
+    }
+
+    #[view]
+    /// @notice Returns the address of the Aave treasury that receives fees on this aToken
+    /// @param metadata_address The address of the aToken
+    /// @return Address of the Aave treasury
+    public fun get_reserve_treasury_address(
+        metadata_address: address
+    ): address acquires TokenData, TokenMap {
+        assert_token_exists(metadata_address);
+        let token_data = get_token_data(metadata_address);
+        token_data.treasury
+    }
+
+    #[view]
+    /// @notice Returns the address of the underlying asset of this aToken
+    /// @param metadata_address The address of the aToken
+    /// @return The address of the underlying asset
+    public fun get_underlying_asset_address(
+        metadata_address: address
+    ): address acquires TokenData, TokenMap {
+        assert_token_exists(metadata_address);
+        let token_data = get_token_data(metadata_address);
+        token_data.underlying_asset
+    }
+
+    #[view]
+    /// @notice Returns last index interest was accrued to the user's balance
+    /// @param user The address of the user
+    /// @param metadata_address The address of the aToken
+    /// @return The last index interest was accrued to the user's balance, expressed in ray
+    public fun get_previous_index(
+        user: address, metadata_address: address
+    ): u256 acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::get_previous_index(user, metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the scaled balance of the user and the scaled total supply
+    /// @param owner The address of the user
+    /// @param metadata_address The address of the aToken
+    /// @return The scaled balance of the user
+    /// @return The scaled total supply
+    public fun get_scaled_user_balance_and_supply(
+        owner: address, metadata_address: address
+    ): (u256, u256) acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::get_scaled_user_balance_and_supply(owner, metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the scaled balance of the user
+    /// @dev The scaled balance is the sum of all the updated stored balance divided by the reserve's liquidity index
+    /// at the moment of the update
+    /// @param owner The user whose balance is calculated
+    /// @param metadata_address The address of the aToken
+    /// @return The scaled balance of the user
+    public fun scaled_balance_of(
+        owner: address, metadata_address: address
+    ): u256 acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::scaled_balance_of(owner, metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the amount of tokens owned by the owner
+    /// @param owner The address of the token owner
+    /// @param metadata_address The address of the aToken
+    /// @return The balance of tokens for the owner
+    public fun balance_of(owner: address, metadata_address: address): u256 acquires TokenData, TokenMap {
+        let current_scaled_balance = scaled_balance_of(owner, metadata_address);
+        if (current_scaled_balance == 0) {
+            return 0
+        };
+        let underlying_token_address = get_underlying_asset_address(metadata_address);
+
+        wad_ray_math::ray_mul(
+            current_scaled_balance,
+            pool::get_reserve_normalized_income(underlying_token_address)
         )
     }
 
-    fun assert_token_exists(metadata_address: address) acquires TokenMap {
+    #[view]
+    /// @notice Returns the scaled total supply of the scaled balance token
+    /// @dev Represents sum(debt/index)
+    /// @param metadata_address The address of the aToken
+    /// @return The scaled total supply
+    public fun scaled_total_supply(metadata_address: address): u256 acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::scaled_total_supply(metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the amount of tokens in existence
+    /// @param metadata_address The address of the aToken
+    /// @return The total supply of tokens
+    public fun total_supply(metadata_address: address): u256 acquires TokenData, TokenMap {
+        let current_supply_scaled = scaled_total_supply(metadata_address);
+        if (current_supply_scaled == 0) {
+            return 0
+        };
+
+        let underlying_token_address = get_underlying_asset_address(metadata_address);
+
+        wad_ray_math::ray_mul(
+            current_supply_scaled,
+            pool::get_reserve_normalized_income(underlying_token_address)
+        )
+    }
+
+    #[view]
+    /// @notice Returns the name of the token
+    /// @param metadata_address The address of the aToken
+    /// @return The name of the token
+    public fun name(metadata_address: address): String acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::name(metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the symbol of the token
+    /// @param metadata_address The address of the aToken
+    /// @return The symbol of the token
+    public fun symbol(metadata_address: address): String acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::symbol(metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the number of decimals of the token
+    /// @param metadata_address The address of the aToken
+    /// @return The number of decimals
+    public fun decimals(metadata_address: address): u8 acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::decimals(metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the address of an aToken by its symbol
+    /// @param symbol The symbol of the aToken to find
+    /// @return The address of the aToken
+    public fun token_address(symbol: String): address acquires TokenMap {
         let token_map = borrow_global<TokenMap>(@aave_pool);
+
+        let address_found = option::none();
+        smart_table::for_each_ref(
+            &token_map.token_to_underlying,
+            |metadata_address, _underlying_asset| {
+                let token_metadata =
+                    object::address_to_object<Metadata>(*metadata_address);
+                let token_symbol = fungible_asset::symbol(token_metadata);
+                if (token_symbol == symbol) {
+                    assert!(
+                        std::option::is_none(&address_found),
+                        error_config::get_etoken_already_exists()
+                    );
+                    std::option::fill(&mut address_found, *metadata_address);
+                };
+            }
+        );
+
         assert!(
-            smart_table::contains(&token_map.value, metadata_address),
+            std::option::is_some(&address_found),
             error_config::get_etoken_not_exist()
+        );
+        std::option::destroy_some(address_found)
+    }
+
+    #[view]
+    /// @notice Returns the metadata object of an aToken by its symbol
+    /// @param symbol The symbol of the aToken to find
+    /// @return The metadata object of the aToken
+    public fun asset_metadata(symbol: String): Object<Metadata> acquires TokenMap {
+        object::address_to_object<Metadata>(token_address(symbol))
+    }
+
+    // Public Entrypoint functions
+    /// @notice Transfers out any token that is not the underlying token from an aToken's resource account
+    /// @param account The account signer of the caller
+    /// @param token The address of the token to transfer
+    /// @param to The address of the recipient
+    /// @param amount The amount of token to transfer
+    /// @param metadata_address The address of the aToken
+    public entry fun rescue_tokens(
+        account: &signer,
+        token: address,
+        to: address,
+        amount: u256,
+        metadata_address: address
+    ) acquires TokenData, TokenMap {
+        token_base::only_pool_admin(account);
+        assert_token_exists(metadata_address);
+        let token_data = get_token_data(metadata_address);
+
+        assert!(
+            token != token_data.underlying_asset,
+            error_config::get_eunderlying_cannot_be_rescued()
+        );
+
+        let a_token_resource_account = get_token_account_with_signer(token_data);
+        fungible_asset_manager::transfer(
+            &a_token_resource_account,
+            to,
+            (amount as u64),
+            token
         );
     }
 
-    //
-    // Entry Functions
-    //
+    // Public functions
+    /// @notice Handles repayment by potentially performing actions with the underlying asset
+    /// @dev The default implementation is empty, but subclasses may override to stake or use the asset
+    /// @param _user The user executing the repayment
+    /// @param _on_behalf_of The address of the user who will get his debt reduced/removed
+    /// @param _amount The amount getting repaid
+    /// @param _metadata_address The address of the aToken
+    public fun handle_repayment(
+        _user: address,
+        _on_behalf_of: address,
+        _amount: u256,
+        _metadata_address: address
+    ) {
+        // Intentionally left blank
+    }
+
+    // Friend functions
     /// @notice Creates a new aToken
-    /// @dev Only callable by the pool module
+    /// @dev Only callable by the pool_token_logic module
     /// @param signer The signer of the caller
     /// @param name The name of the aToken
     /// @param symbol The symbol of the aToken
     /// @param decimals The decimals of the aToken
     /// @param icon_uri The icon URI of the aToken
     /// @param project_uri The project URI of the aToken
+    /// @param incentives_controller The incentive controller address, if any, of the Token
     /// @param underlying_asset The address of the underlying asset
     /// @param treasury The address of the treasury
     /// @return The address of the aToken
@@ -121,103 +361,102 @@ module aave_pool::a_token_factory {
         decimals: u8,
         icon_uri: String,
         project_uri: String,
+        incentives_controller: Option<address>,
         underlying_asset: address,
         treasury: address
     ): address acquires TokenMap {
         only_asset_listing_or_pool_admins(signer);
+        let signer_addr = signer::address_of(signer);
 
-        let token_map = borrow_global_mut<TokenMap>(@aave_pool);
-        validate_unique_token(token_map, name, symbol);
-
-        let token_count = token_map.count + 1;
-        let seed = *string::bytes(&format2(&b"{}_{}", symbol, token_count));
-        let user_signer_addr = signer::address_of(signer);
-        let metadata_address = object::create_object_address(&user_signer_addr, seed);
-
-        assert!(
-            !smart_table::contains(&token_map.value, metadata_address),
-            error_config::get_etoken_already_exists()
-        );
-
-        let (_resource_signer, signer_cap) =
-            account::create_resource_account(signer, seed);
-
-        let token_data = TokenData { underlying_asset, treasury, signer_cap };
-        smart_table::add(&mut token_map.value, metadata_address, token_data);
-
-        let constructor_ref = &object::create_named_object(signer, seed);
+        // create the object that represents this AToken first
+        //
+        // NOTE: an alternative is to use the
+        // `object::create_named_object(creator: &signer, seed: vector<u8>)`
+        // method, using `signer` as the `creator` and `symbol` as the seed.
+        //
+        // This alternative enables simple object look-up (via creator address
+        // and seed), but whether this is really a benefit or not is debatable,
+        // as there could be caveats.
+        //
+        // Caveat 1: multiple accounts can be the creator as long as the account
+        // is an AssetListingAdmin or a PoolAdmin. To look up the AToken address
+        // of, say, `aUSDC`, you also need to know who created `aUSDC`, which
+        // might not be obvious.
+        //
+        // Cavear 2: there might be a case in the future where we want to move
+        // the `aUSDC` object to a different object (e.g., upgrade `aUSDC` to
+        // `aUSDC_V2`). In this case, the easy look up will resolve to `aUSDC`
+        // which is something we want to avoid.
+        //
+        // Hence, we use this `object::create_sticky_object` to force the AToken
+        // lookup logic to go through functions we control.
+        let constructor_ref = object::create_sticky_object(signer_addr);
         token_base::create_token(
-            constructor_ref,
+            &constructor_ref,
             name,
             symbol,
             decimals,
             icon_uri,
-            project_uri
+            project_uri,
+            incentives_controller
         );
 
-        token_map.count = token_count;
+        // create the resource account associated with this object
+        let object_signer = object::generate_signer(&constructor_ref);
+        let (_resource_signer, signer_cap) =
+            account::create_resource_account(&object_signer, b"");
 
+        // mark this object as an AToken by storing a `TokenData` at the object address
+        move_to(
+            &object_signer,
+            TokenData { underlying_asset, treasury, signer_cap }
+        );
+
+        // save to mapping
+        let metadata_address = object::address_from_constructor_ref(&constructor_ref);
+        let token_map = borrow_global_mut<TokenMap>(@aave_pool);
+        smart_table::add(
+            &mut token_map.underlying_to_token,
+            underlying_asset,
+            metadata_address
+        );
+        smart_table::add(
+            &mut token_map.token_to_underlying,
+            metadata_address,
+            underlying_asset
+        );
+
+        // emit event
         event::emit(
             Initialized {
                 underlying_asset,
                 treasury,
+                incentives_controller,
                 a_token_decimals: decimals,
                 a_token_name: name,
                 a_token_symbol: symbol
             }
         );
 
+        // return the token address
         metadata_address
     }
 
-    /// @notice Rescue and transfer tokens locked in this contract
-    /// @param account The account signer of the caller
-    /// @param token The address of the underlying token
-    /// @param to The address of the recipient
-    /// @param amount The amount of token to transfer
-    /// @param meadata_address The address of the aToken
-    public entry fun rescue_tokens(
-        account: &signer,
-        token: address,
-        to: address,
-        amount: u256,
-        metadata_address: address
-    ) acquires TokenMap {
-        token_base::only_pool_admin(account);
-        assert_token_exists(metadata_address);
-
-        assert!(
-            token != get_underlying_asset_address(metadata_address),
-            error_config::get_eunderlying_cannot_be_rescued()
-        );
-
-        let a_token_resource_account = get_token_account_with_signer(metadata_address);
-        fungible_asset_manager::transfer(
-            &a_token_resource_account,
-            to,
-            (amount as u64),
-            token
-        );
-    }
-
-    //
-    //  Functions Call between contracts
-    //
-
     /// @notice Mints `amount` aTokens to `on_behalf_of`
-    /// @dev Only callable by the bridge_logic and supply_logic module
+    /// @dev Only callable by the supply_logic module
     /// @param caller The address performing the mint
     /// @param on_behalf_of The address of the user that will receive the minted aTokens
     /// @param amount The amount of tokens getting minted
     /// @param index The next liquidity index of the reserve
     /// @param metadata_address The address of the aToken
+    /// @return whether this is the first time we mint aTokens to `on_behalf_of`
     public(friend) fun mint(
         caller: address,
         on_behalf_of: address,
         amount: u256,
         index: u256,
         metadata_address: address
-    ) acquires TokenMap {
+    ): bool acquires TokenMap {
         assert_token_exists(metadata_address);
         token_base::mint_scaled(
             caller,
@@ -225,7 +464,7 @@ module aave_pool::a_token_factory {
             amount,
             index,
             metadata_address
-        );
+        )
     }
 
     /// @notice Burns aTokens from `from` and sends the equivalent amount of underlying to `receiver_of_underlying`
@@ -243,9 +482,8 @@ module aave_pool::a_token_factory {
         amount: u256,
         index: u256,
         metadata_address: address
-    ) acquires TokenMap {
+    ) acquires TokenData, TokenMap {
         assert_token_exists(metadata_address);
-
         token_base::burn_scaled(
             from,
             receiver_of_underlying,
@@ -254,52 +492,75 @@ module aave_pool::a_token_factory {
             metadata_address
         );
 
-        let a_token_resource_account = get_token_account_address(metadata_address);
-        if (receiver_of_underlying != a_token_resource_account) {
+        let token_data = get_token_data(metadata_address);
+        let a_token_resource_account_signer = get_token_account_with_signer(token_data);
+        let a_token_resource_account_address =
+            signer::address_of(&a_token_resource_account_signer);
+
+        if (receiver_of_underlying != a_token_resource_account_address) {
             fungible_asset_manager::transfer(
-                &get_token_account_with_signer(metadata_address),
+                &a_token_resource_account_signer,
                 receiver_of_underlying,
                 (amount as u64),
-                get_underlying_asset_address(metadata_address)
+                token_data.underlying_asset
             )
         }
     }
 
     /// @notice Mints aTokens to the reserve treasury
-    /// @dev Only callable by the pool module
+    /// @dev Only callable by the pool_token_logic module
     /// @param amount The amount of tokens getting minted
     /// @param index The next liquidity index of the reserve
     /// @param metadata_address The address of the aToken
     public(friend) fun mint_to_treasury(
         amount: u256, index: u256, metadata_address: address
-    ) acquires TokenMap {
+    ) acquires TokenData, TokenMap {
         assert_token_exists(metadata_address);
         if (amount != 0) {
             let token_data = get_token_data(metadata_address);
             token_base::mint_scaled(
+                // In the Solidity implementation, `address(POOL)` can be
+                // different per each AToken but here it is always a fixed
+                // address `@aave_pool` which is not ideal.
                 @aave_pool,
                 token_data.treasury,
                 amount,
                 index,
                 metadata_address
-            )
+            );
         }
     }
 
-    /// @notice Transfers the underlying asset to `to`.
+    /// @notice Sets an incentives controller for the aToken
+    /// @dev Only callable by the pool_token_logic module
+    /// @param admin The address of the admin calling the method
+    /// @param metadata_address The address of the aToken
+    /// @param incentives_controller The address of the incentives controller
+    public(friend) fun set_incentives_controller(
+        admin: &signer, metadata_address: address, incentives_controller: Option<address>
+    ) {
+        only_pool_admin(admin);
+        token_base::set_incentives_controller(
+            admin, metadata_address, incentives_controller
+        );
+    }
+
+    /// @notice Transfers the underlying asset to `to`
     /// @dev Only callable by the borrow_logic and flashloan_logic module
     /// @param to The recipient of the underlying
     /// @param amount The amount getting transferred
     /// @param metadata_address The address of the aToken
     public(friend) fun transfer_underlying_to(
         to: address, amount: u256, metadata_address: address
-    ) acquires TokenMap {
+    ) acquires TokenData, TokenMap {
         assert_token_exists(metadata_address);
+        let token_data = get_token_data(metadata_address);
+
         fungible_asset_manager::transfer(
-            &get_token_account_with_signer(metadata_address),
+            &get_token_account_with_signer(token_data),
             to,
             (amount as u64),
-            get_underlying_asset_address(metadata_address)
+            token_data.underlying_asset
         )
     }
 
@@ -320,181 +581,70 @@ module aave_pool::a_token_factory {
         assert_token_exists(metadata_address);
         token_base::transfer(from, to, amount, index, metadata_address);
         // send balance transfer event
-        event::emit(
-            BalanceTransfer { from, to, value: wad_ray_math::ray_div(amount, index), index }
-        );
-    }
-
-    /// @notice Handles the underlying received by the aToken after the transfer has been completed.
-    /// @dev The default implementation is empty, nothing needs to be done after the transfer is concluded.
-    /// However in the future there may be aTokens that allow for example to stake the underlying
-    /// to receive LM rewards. In that case, `handle_repayment()` would perform the staking of the underlying asset.
-    /// @param _user The user executing the repayment
-    /// @param _on_behalf_of The address of the user who will get his debt reduced/removed
-    /// @param _amount The amount getting repaid
-    /// @param _metadata_address The address of the aToken
-    public fun handle_repayment(
-        _user: address,
-        _on_behalf_of: address,
-        _amount: u256,
-        _metadata_address: address
-    ) {
-        // Intentionally left blank
-    }
-
-    //
-    //  View functions
-    //
-
-    inline fun get_token_data(metadata_address: address): &TokenData acquires TokenMap {
-        let token_map = borrow_global<TokenMap>(@aave_pool);
-        assert!(
-            smart_table::contains(&token_map.value, metadata_address),
-            error_config::get_etoken_not_exist()
-        );
-
-        smart_table::borrow(&token_map.value, metadata_address)
-    }
-
-    #[view]
-    public fun get_revision(): u256 {
-        ATOKEN_REVISION
-    }
-
-    #[view]
-    /// @notice Retrieves the account address of the managed fungible asset associated with a specific aToken.
-    /// @dev Creates a signer capability for the resource account managing the fungible asset and then retrieves its address.
-    /// @param metadata_address The address of the aToken
-    /// @return The address of the managed fungible asset account.
-    public fun get_token_account_address(metadata_address: address): address acquires TokenMap {
-        let token_data = get_token_data(metadata_address);
-        let account_signer =
-            account::create_signer_with_capability(&token_data.signer_cap);
-        signer::address_of(&account_signer)
-    }
-
-    /// @notice Retrieves the signer of the managed fungible asset associated with a specific aToken.
-    /// @dev Creates a signer capability for the resource account that manages the fungible asset.
-    /// @param metadata_address The address of the aToken.
-    /// @return The signer of the managed fungible asset.
-    fun get_token_account_with_signer(metadata_address: address): signer acquires TokenMap {
-        let token_data = get_token_data(metadata_address);
-        account::create_signer_with_capability(&token_data.signer_cap)
-    }
-
-    #[view]
-    /// @notice Returns the address of the Aave treasury, receiving the fees on this aToken.
-    /// @param metadata_address The address of the aToken
-    /// @return Address of the Aave treasury
-    public fun get_reserve_treasury_address(metadata_address: address): address acquires TokenMap {
-        let token_data = get_token_data(metadata_address);
-        token_data.treasury
-    }
-
-    #[view]
-    /// @notice Returns the address of the underlying asset of this aToken (E.g. WETH for aWETH)
-    /// @param metadata_address The address of the aToken
-    /// @return The address of the underlying asset
-    public fun get_underlying_asset_address(metadata_address: address): address acquires TokenMap {
-        let token_data = get_token_data(metadata_address);
-        token_data.underlying_asset
-    }
-
-    #[view]
-    /// @notice Returns last index interest was accrued to the user's balance
-    /// @param user The address of the user
-    /// @param metadata_address The address of the aToken
-    /// @return The last index interest was accrued to the user's balance, expressed in ray
-    public fun get_previous_index(
-        user: address, metadata_address: address
-    ): u256 {
-        token_base::get_previous_index(user, metadata_address)
-    }
-
-    #[view]
-    /// @notice Returns the scaled balance of the user and the scaled total supply.
-    /// @param owner The address of the user
-    /// @param metadata_address The address of the aToken
-    /// @return The scaled balance of the user
-    /// @return The scaled total supply
-    public fun get_scaled_user_balance_and_supply(
-        owner: address, metadata_address: address
-    ): (u256, u256) {
-        token_base::get_scaled_user_balance_and_supply(owner, metadata_address)
-    }
-
-    #[view]
-    /// @notice Returns the scaled balance of the user.
-    /// @dev The scaled balance is the sum of all the updated stored balance divided by the reserve's liquidity index
-    /// at the moment of the update
-    /// @param owner The user whose balance is calculated
-    /// @param metadata_address The address of the aToken
-    /// @return The scaled balance of the user
-    public fun scaled_balance_of(
-        owner: address, metadata_address: address
-    ): u256 {
-        token_base::scaled_balance_of(owner, metadata_address)
-    }
-
-    #[view]
-    /// @notice Returns the scaled total supply of the scaled balance token. Represents sum(debt/index)
-    /// @param metadata_address The address of the aToken
-    /// @return The scaled total supply
-    public fun scaled_total_supply(metadata_address: address): u256 {
-        token_base::scaled_total_supply(metadata_address)
-    }
-
-    #[view]
-    public fun name(metadata_address: address): String {
-        token_base::name(metadata_address)
-    }
-
-    #[view]
-    public fun symbol(metadata_address: address): String {
-        token_base::symbol(metadata_address)
-    }
-
-    #[view]
-    public fun decimals(metadata_address: address): u8 {
-        token_base::decimals(metadata_address)
-    }
-
-    /// @notice Validates that the aToken name and symbol are unique
-    /// @param token_map The aToken map
-    /// @param name The name of the aToken
-    /// @param symbol The symbol of the aToken
-    fun validate_unique_token(
-        token_map: &TokenMap, name: String, symbol: String
-    ) {
-        smart_table::for_each_ref(
-            &token_map.value,
-            |metadata_address, _token_data| {
-                let asset_name = name(*metadata_address);
-                let asset_symbol = symbol(*metadata_address);
-                assert!(
-                    asset_name != name, error_config::get_etoken_name_already_exist()
-                );
-                assert!(
-                    asset_symbol != symbol,
-                    error_config::get_etoken_symbol_already_exist()
-                );
-            }
+        events::emit_balance_transfer(
+            from,
+            to,
+            wad_ray_math::ray_div(amount, index),
+            index,
+            metadata_address
         );
     }
 
     /// @notice Drops the a token associated data
-    /// @dev Only callable by the pool module
+    /// @dev Only callable by the pool_token_logic module
     /// @param metadata_address The address of the metadata object
-    public(friend) fun drop_token(metadata_address: address) acquires TokenMap {
+    public(friend) fun drop_token(metadata_address: address) acquires TokenMap, TokenData {
         assert_token_exists(metadata_address);
-        // Remove metadata_address from token map
-        let token_map = borrow_global_mut<TokenMap>(@aave_pool);
-        smart_table::remove(&mut token_map.value, metadata_address);
 
-        // Remove metadata_address from token_base module's token map
+        // remove metadata_address from token map
+        let token_map = borrow_global_mut<TokenMap>(@aave_pool);
+        let underlying_asset =
+            smart_table::remove(&mut token_map.token_to_underlying, metadata_address);
+        smart_table::remove(&mut token_map.underlying_to_token, underlying_asset);
+
+        // remove token_base module's token map
         token_base::drop_token(metadata_address);
+
+        // finally remove the token data at the metadata address
+        move_from<TokenData>(metadata_address);
     }
 
+    // Private functions
+    /// @notice Initializes the module with a token map
+    /// @param signer The signer of the token admin account
+    fun init_module(signer: &signer) {
+        token_base::only_token_admin(signer);
+        move_to(
+            signer,
+            TokenMap {
+                underlying_to_token: smart_table::new(),
+                token_to_underlying: smart_table::new()
+            }
+        )
+    }
+
+    /// @notice Asserts that the token exists
+    /// @param metadata_address The address of the aToken to check
+    fun assert_token_exists(metadata_address: address) acquires TokenMap {
+        assert!(is_atoken(metadata_address), error_config::get_etoken_not_exist());
+    }
+
+    /// @notice Retrieves the token data for a specific aToken
+    /// @param metadata_address The address of the aToken
+    /// @return Reference to the token data
+    inline fun get_token_data(metadata_address: address): &TokenData {
+        borrow_global<TokenData>(metadata_address)
+    }
+
+    /// @notice Retrieves the signer of the managed fungible asset
+    /// @param token_data The token data of the aToken
+    /// @return The signer of the managed fungible asset
+    fun get_token_account_with_signer(token_data: &TokenData): signer {
+        account::create_signer_with_capability(&token_data.signer_cap)
+    }
+
+    /// @notice Checks if the caller is an asset listing admin or pool admin
+    /// @param account The account to check
     fun only_asset_listing_or_pool_admins(account: &signer) {
         let account_address = signer::address_of(account);
         assert!(
@@ -504,41 +654,42 @@ module aave_pool::a_token_factory {
         )
     }
 
-    #[view]
-    public fun token_address(owner: address, symbol: String): address acquires TokenMap {
-        let token_map = borrow_global<TokenMap>(@aave_pool);
-
-        let address_found = option::none<address>();
-        smart_table::for_each_ref(
-            &token_map.value,
-            |metadata_address, _token_data| {
-                let token_metadata =
-                    object::address_to_object<Metadata>(*metadata_address);
-                if (object::owner(token_metadata) == owner) {
-                    let token_symbol = fungible_asset::symbol(token_metadata);
-                    if (token_symbol == symbol) {
-                        if (std::option::is_some(&address_found)) {
-                            abort(error_config::get_etoken_already_exists())
-                        };
-                        std::option::fill(&mut address_found, *metadata_address);
-                    };
-                }
-            }
-        );
-
-        if (std::option::is_none(&address_found)) {
-            abort(error_config::get_etoken_not_exist())
-        };
-        std::option::destroy_some(address_found)
-    }
-
-    #[view]
-    public fun asset_metadata(owner: address, symbol: String): Object<Metadata> acquires TokenMap {
-        object::address_to_object<Metadata>(token_address(owner, symbol))
+    // Test only functions
+    #[test_only]
+    /// @notice Initialize the module for testing
+    /// @param signer The signer of the token admin account
+    public fun test_init_module(signer: &signer) {
+        init_module(signer);
     }
 
     #[test_only]
-    public fun test_init_module(signer: &signer) {
-        init_module(signer);
+    /// @notice Mint tokens for testing
+    /// @param caller The address performing the mint
+    /// @param on_behalf_of The address of the user that will receive the minted aTokens
+    /// @param amount The amount of tokens getting minted
+    /// @param index The next liquidity index of the reserve
+    /// @param metadata_address The address of the aToken
+    /// @return whether this is the first time we mint aTokens to `on_behalf_of`
+    public fun mint_for_testing(
+        caller: address,
+        on_behalf_of: address,
+        amount: u256,
+        index: u256,
+        metadata_address: address
+    ): bool acquires TokenMap {
+        mint(
+            caller,
+            on_behalf_of,
+            amount,
+            index,
+            metadata_address
+        )
+    }
+
+    #[test_only]
+    /// @notice Assert token exists for testing
+    /// @param metadata_address The address of the aToken to check
+    public fun assert_token_exists_for_testing(metadata_address: address) acquires TokenMap {
+        assert_token_exists(metadata_address);
     }
 }

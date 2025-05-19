@@ -9,11 +9,9 @@ module aave_config::error_tests {
         get_easset_not_listed,
         get_eborrow_cap_exceeded,
         get_eborrowing_not_enabled,
-        get_ebridge_protocol_fee_invalid,
         get_ecaller_must_be_pool,
         get_ecaller_not_asset_listing_or_pool_admin,
         get_ecaller_not_atoken,
-        get_ecaller_not_bridge,
         get_ecaller_not_emergency_admin,
         get_ecaller_not_pool_admin,
         get_ecaller_not_pool_configurator,
@@ -33,7 +31,6 @@ module aave_config::error_tests {
         get_einconsistent_emode_category,
         get_einconsistent_flashloan_params,
         get_einconsistent_params_length,
-        get_einterest_rate_rebalance_conditions_not_met,
         get_einvalid_addresses_provider,
         get_einvalid_addresses_provider_id,
         get_einvalid_amount,
@@ -69,6 +66,7 @@ module aave_config::error_tests {
         get_eoperation_not_supported,
         get_epool_addresses_do_not_match,
         get_eprice_oracle_check_failed,
+        get_ecap_lower_than_actual_price,
         get_ereserve_already_added,
         get_ereserve_already_initialized,
         get_ereserve_debt_not_zero,
@@ -81,7 +79,6 @@ module aave_config::error_tests {
         get_esiloed_borrowing_violation,
         get_especified_currency_not_borrowed_by_user,
         get_esupply_cap_exceeded,
-        get_eunbacked_mint_cap_exceeded,
         get_eunderlying_balance_zero,
         get_eunderlying_cannot_be_rescued,
         get_eunderlying_claimable_rights_not_zero,
@@ -89,7 +86,78 @@ module aave_config::error_tests {
         get_euser_not_listed,
         get_evariable_debt_supply_not_zero,
         get_ezero_address_not_valid,
-        get_flashloan_payer_not_receiver
+        get_flashloan_payer_not_receiver,
+        get_enot_acl_owner,
+        get_erole_missmatch,
+        get_erole_can_only_renounce_self,
+        get_eroles_not_initialized,
+        get_eoverflow,
+        get_edivision_by_zero,
+        get_eoracle_not_admin,
+        get_easset_already_exists,
+        get_eno_asset_feed,
+        get_eoralce_benchmark_length_mistmatch,
+        get_enegative_oracle_price,
+        get_ezero_oracle_price,
+        get_ecaller_not_pool_or_asset_listing_admin,
+        get_erequested_feed_ids_assets_mistmatch,
+        get_edifferent_caller_on_behalf_of,
+        get_eempty_feed_id,
+        get_eno_asset_custom_price,
+        get_ezero_asset_custom_price,
+        get_erequested_custom_prices_assets_mistmatch,
+        get_easset_not_registered_with_oracle,
+        get_enot_rate_owner,
+        get_edefault_interest_rate_strategy_not_initialized,
+        get_egho_interest_rate_strategy_not_initialized,
+        get_enot_pool_owner,
+        get_ereserve_list_not_initialized,
+        get_etoken_already_exists,
+        get_etoken_not_exist,
+        get_eresource_not_exist,
+        get_etoken_name_already_exist,
+        get_etoken_symbol_already_exist,
+        get_ereserve_addresses_list_not_initialized,
+        get_einsufficient_coins_to_wrap,
+        get_einsufficient_fas_to_unwrap,
+        get_eunmapped_coin_to_fa,
+        get_enot_rewards_admin,
+        get_eincentives_controller_mismatch,
+        get_eunauthorized_claimer,
+        get_ereward_index_overflow,
+        get_einvalid_reward_config,
+        get_edistribution_does_not_exist,
+        get_ereward_transfer_failed,
+        get_enot_emission_admin,
+        get_erewards_controller_not_defined,
+        get_enot_ecosystem_reserve_funds_admin,
+        get_enot_ecosystem_admin_or_recipient,
+        get_estream_not_exist,
+        get_estream_to_the_contract_itself,
+        get_estream_to_the_caller,
+        get_estream_deposit_is_zero,
+        get_estart_time_before_block_timestamp,
+        get_estop_time_before_the_start_time,
+        get_edeposit_smaller_than_time_delta,
+        get_edeposit_not_multiple_of_time_delta,
+        get_estream_withdraw_is_zero,
+        get_ewithdraw_exceeds_the_available_balance,
+        get_einvalid_rewards_controller_address,
+        get_ereward_not_exist,
+        get_einvalid_max_rate,
+        get_ewithdraw_to_atoken,
+        get_esupply_to_atoken,
+        get_eslope_2_must_be_gte_slope_1,
+        get_ecaller_not_risk_or_pool_or_emergency_admin,
+        get_eliquidation_grace_sentinel_check_failed,
+        get_einvalid_grace_period,
+        get_einvalid_freeze_flag,
+        get_emust_not_leave_dust,
+        get_emin_asset_decimal_places,
+        get_estore_for_asset_not_exist,
+        get_easset_no_price_cap,
+        get_einvalid_max_apt_fee,
+        get_einvalid_emission_rate
     };
 
     const TEST_SUCCESS: u64 = 1;
@@ -175,8 +243,6 @@ module aave_config::error_tests {
     const ENO_OUTSTANDING_VARIABLE_DEBT: u64 = 42;
     /// The underlying balance needs to be greater than 0
     const EUNDERLYING_BALANCE_ZERO: u64 = 43;
-    /// Interest rate rebalance conditions were not met
-    const EINTEREST_RATE_REBALANCE_CONDITIONS_NOT_MET: u64 = 44;
     /// Health factor is not below the threshold
     const EHEALTH_FACTOR_NOT_BELOW_THRESHOLD: u64 = 45;
     /// The collateral chosen cannot be liquidated
@@ -262,47 +328,94 @@ module aave_config::error_tests {
     const ERESERVE_DEBT_NOT_ZERO: u64 = 90;
     /// FlashLoaning for this asset is disabled
     const EFLASHLOAN_DISABLED: u64 = 91;
+    /// The expect maximum borrow rate is invalid
+    const EINVALID_MAX_RATE: u64 = 92;
+    /// Withdrawing to the aToken is not allowed
+    const EWITHDRAW_TO_ATOKEN: u64 = 93;
+    /// Supplying to the aToken is not allowed
+    const ESUPPLY_TO_ATOKEN: u64 = 94;
+    /// Variable interest rate slope 2 can not be lower than slope 1
+    const ESLOPE_2_MUST_BE_GTE_SLOPE_1: u64 = 95;
+    /// The caller of the function is neither a risk nor pool admin nor emergency admin
+    const ECALLER_NOT_RISK_OR_POOL_OR_EMERGENCY_ADMIN: u64 = 96;
+    /// Liquidation grace sentinel validation failed
+    const ELIQUIDATION_GRACE_SENTINEL_CHECK_FAILED: u64 = 97;
+    /// Grace period above a valid range
+    const EINVALID_GRACE_PERIOD: u64 = 98;
+    /// Freeze flag is invalid
+    const EINVALID_FREEZE_FLAG: u64 = 99;
 
-    /// Aptos has introduced a new business logic error code range from 1001 to 2000.
+    /// Below a certain threshold liquidators need to take the full position
+    const EMUST_NOT_LEAVE_DUST: u64 = 103;
 
-    /// aave_acl module error code range from 1001 to 1100.
+    // Aptos has introduced a new business logic error code range from 1001 to 2000.
+
+    // aave_acl module error code range from 1001 to 1100.
+
     /// Account is not the acl's owner.
     const ENOT_ACL_OWNER: u64 = 1001;
     /// Account is missing role.
     const EROLE_MISSMATCH: u64 = 1002;
     /// can only renounce roles for self
     const EROLE_CAN_ONLY_RENOUNCE_SELF: u64 = 1003;
+    /// roles not initialized
+    const EROLES_NOT_INITIALIZED: u64 = 1004;
 
-    /// aave_math module error code range from 1101 to 1200.
+    // aave_math module error code range from 1101 to 1200.
+
     /// Calculation results in overflow
     const EOVERFLOW: u64 = 1101;
     /// Cannot divide by zero
     const EDIVISION_BY_ZERO: u64 = 1102;
 
-    /// aave_oracle module error code range from 1201 to 1300.
-    /// Account is not the oracle's owner.
-    const ENOT_ORACLE_OWNER: u64 = 1201;
-    const ERESOURCE_NOT_FOUND: u64 = 1202;
+    // aave_oracle module error code range from 1201 to 1300.
 
-    /// aave_oracle
-    /// Not an asset listing or a pool admin error
-    const ENOT_ASSET_LISTING_OR_POOL_ADMIN: u64 = 1203;
-    /// base currency not set
-    const EBASE_CURRENCY_NOT_SET: u64 = 1204;
-    /// identical base currency already added
-    const EIDENTICAL_BASE_CURRENCY_ALREADY_ADDED: u64 = 1205;
-    /// missing price feed identifier
-    const EMISSING_PRICE_FEED_IDENTIFIER: u64 = 1206;
-    /// missing price vaa
-    const EMISSING_PRICE_VAA: u64 = 1207;
-    /// not existing price feed identifier
-    const EPRICE_FEED_IDENTIFIER_NOT_EXIST: u64 = 1208;
+    // aave_oracle module error code range from 1201 to 1300.
 
-    /// aave_rate module error code range from 1301 to 1400.
+    /// Caller must be only oracle admin
+    const E_ORACLE_NOT_ADMIN: u64 = 1201;
+    /// Asset is already registered with feed
+    const E_ASSET_ALREADY_EXISTS: u64 = 1202;
+    /// No asset feed for the given asset
+    const E_NO_ASSET_FEED: u64 = 1203;
+    /// Returned batch of prices equals the requested assets
+    const E_ORACLE_BENCHMARK_LENGHT_MISMATCH: u64 = 1204;
+    /// Returned oracle price is negative
+    const E_NEGATIVE_ORACLE_PRICE: u64 = 1205;
+    /// Returned oracle price is zero
+    const E_ZERO_ORACLE_PRICE: u64 = 1206;
+    /// The caller of the function is not a risk or asset listing admin
+    const ECALLER_NOT_RISK_OR_ASSET_LISTING_ADMIN: u64 = 1207;
+    /// Requested assets and feed ids do not match
+    const E_REQUESTED_FEED_IDS_ASSETS_MISMATCH: u64 = 1208;
+    /// On behalf of and caller are different for minting
+    const EDIFFERENT_CALLER_ON_BEHALF_OF: u64 = 1209;
+    /// Empty oracle feed_id
+    const EEMPTY_FEED_ID: u64 = 1210;
+    /// No custom price for the given asset
+    const E_NO_CUSTOM_PRICE: u64 = 1211;
+    /// Zero custom price for the given asset
+    const E_ZERO_CUSTOM_PRICE: u64 = 1212;
+    /// Requested assets and custom prices do not match
+    const E_REQUESTED_CUSTOM_PRICES_ASSETS_MISMATCH: u64 = 1213;
+    /// The asset is not registered with the oracle
+    const E_ASSET_NOT_REGISTERED_WITH_ORACLE: u64 = 1214;
+    /// The asset cap is lower than the actual price of the asset
+    const E_CAP_LOWER_THAN_ACTUAL_PRICE: u64 = 1215;
+    /// The asset does not have a price cap
+    const E_ASSET_NO_PRICE_CAP: u64 = 1216;
+
+    // aave_rate module error code range from 1301 to 1400.
+
     /// Account is not the rate's owner.
     const ENOT_RATE_OWNER: u64 = 1301;
+    /// default interest rate strategy not initialized
+    const EDEFAULT_INTEREST_RATE_STRATEGY_NOT_INITIALIZED: u64 = 1302;
+    /// gho interest rate strategy not initialized
+    const EGHO_INTEREST_RATE_STRATEGY_NOT_INITIALIZED: u64 = 1303;
 
-    /// aave_pool module error code range from 1401 to 1500.
+    // aave_pool module error code range from 1401 to 1500.
+
     /// Account is not the pool's owner.
     const ENOT_POOL_OWNER: u64 = 1401;
     /// User is not listed
@@ -319,18 +432,86 @@ module aave_config::error_tests {
     const EPRICE_ORACLE_CHECK_FAILED: u64 = 1407;
     /// reserve list not initialized
     const ERESERVE_LIST_NOT_INITIALIZED: u64 = 1408;
+    // reserve addresses list not initialized
+    const ERESERVE_ADDRESSES_LIST_NOT_INITIALIZED: u64 = 1409;
+    /// The expect maximum apt fee is invalid
+    const EINVALID_MAX_APT_FEE: u64 = 1410;
 
-    /// aave_tokens
+    /// coin migrations
+    /// User has insufficient coins to wrap
+    const EINSUFFICIENT_COINS_TO_WRAP: u64 = 1415;
+    /// User has insufficient fungible assets to unwrap
+    const EINSUFFICIENT_FAS_TO_UNWRAP: u64 = 1416;
+    /// The coin has not been mapped to a fungible asset by Aptos
+    const EUNMAPPED_COIN_TO_FA: u64 = 1417;
+
+    // aave_tokens module error code range from 1501 to 1600.
+
     /// Token already exists
-    const ETOKEN_ALREADY_EXISTS: u64 = 1409;
+    const ETOKEN_ALREADY_EXISTS: u64 = 1501;
     /// Token not exist
-    const ETOKEN_NOT_EXIST: u64 = 1410;
+    const ETOKEN_NOT_EXIST: u64 = 1502;
     /// Resource not exist
-    const ERESOURCE_NOT_EXIST: u64 = 1411;
+    const ERESOURCE_NOT_EXIST: u64 = 1503;
     /// Token name already exist
-    const ETOKEN_NAME_ALREADY_EXIST: u64 = 1412;
+    const ETOKEN_NAME_ALREADY_EXIST: u64 = 1504;
     /// Token symbol already exist
-    const ETOKEN_SYMBOL_ALREADY_EXIST: u64 = 1413;
+    const ETOKEN_SYMBOL_ALREADY_EXIST: u64 = 1505;
+    /// Asset minimum decimal places requirement is violated
+    const EMIN_ASSET_DECIMAL_PLACES: u64 = 1506;
+
+    // Periphery error codes should be above 3000
+
+    /// Caller is not rewards admin
+    const ENOT_REWARDS_ADMIN: u64 = 3001;
+    /// Incentives controller mismatch
+    const EINCENTIVES_CONTROLLER_MISMATCH: u64 = 3002;
+    /// Claimer is not authorized to make the reward claim
+    const EUNAHTHORIZED_CLAIMER: u64 = 3003;
+    /// Reward index overflow
+    const EREWARD_INDEX_OVERFLOW: u64 = 3004;
+    /// Invalid config data used in rewards controller / distributor
+    const EINVALID_REWARD_CONFIG: u64 = 3005;
+    /// Distribution does not exist
+    const EDISTRIBUTION_DOES_NOT_EXIST: u64 = 3006;
+    /// Rewards transfer failed
+    const EREWARD_TRANSFER_FAILED: u64 = 3007;
+    /// Caller is not emission admin
+    const ENOT_EMISSION_ADMIN: u64 = 3008;
+    /// Rewards controller is not defined
+    const EREWARDS_CONTROLLER_NOT_DEFINED: u64 = 3009;
+    /// Caller does not have the ecosystem reserve funds admin role
+    const ENOT_ECOSYSTEM_RESERVE_FUNDS_ADMIN: u64 = 3010;
+    /// Caller does not have the ecosystem admin or recipient role
+    const ENOT_ECOSYSTEM_ADMIN_OR_RECIPIENT: u64 = 3011;
+    /// Stream does not exist
+    const ESTREAM_NOT_EXIST: u64 = 3012;
+    /// Creating a stream to the contract itself
+    const ESTREAM_TO_THE_CONTRACT_ITSELF: u64 = 3013;
+    /// Creating a stream to the caller
+    const ESTREAM_TO_THE_CALLER: u64 = 3014;
+    /// Stream deposit is zero
+    const ESTREAM_DEPOSIT_IS_ZERO: u64 = 3015;
+    /// Stream start time is before block timestamp
+    const ESTART_TIME_BEFORE_BLOCK_TIMESTAMP: u64 = 3016;
+    /// Stream stop time is before start time
+    const ESTOP_TIME_BEFORE_THE_START_TIME: u64 = 3017;
+    /// Stream deposit is smaller than time delta
+    const EDEPOSIT_SMALLER_THAN_TIME_DELTA: u64 = 3018;
+    /// Stream deposit is not a multiple of time delta
+    const EDEPOSIT_NOT_MULTIPLE_OF_TIME_DELTA: u64 = 3019;
+    /// Stream withdraw amount is zero
+    const ESTREAM_WITHDRAW_IS_ZERO: u64 = 3020;
+    /// Stream withdraw amount exceeds available balance
+    const EWITHDRAW_EXCEEDS_THE_AVAILABLE_BALANCE: u64 = 3021;
+    /// Rewards controller address is not valid
+    const EINVALID_REWARDS_CONTROLLER_ADDRESS: u64 = 3022;
+    /// Reward does not exist
+    const EREWARD_NOT_EXIST: u64 = 3023;
+    /// Secondrary fungible store does not exist for the asset
+    const ESTORE_FOR_ASSET_NOT_EXIST: u64 = 3024;
+    /// The expect maximum emission rate is invalid
+    const EINVALID_EMISSION_RATE: u64 = 3025;
 
     #[test]
     fun test_get_ecaller_not_pool_admin() {
@@ -369,11 +550,6 @@ module aave_config::error_tests {
                 == ECALLER_NOT_ASSET_LISTING_OR_POOL_ADMIN,
             TEST_SUCCESS
         );
-    }
-
-    #[test]
-    fun test_get_ecaller_not_bridge() {
-        assert!(get_ecaller_not_bridge() == ECALLER_NOT_BRIDGE, TEST_SUCCESS);
     }
 
     #[test]
@@ -487,14 +663,6 @@ module aave_config::error_tests {
     fun test_get_einvalid_emode_category_params() {
         assert!(
             get_einvalid_emode_category_params() == EINVALID_EMODE_CATEGORY_PARAMS,
-            TEST_SUCCESS
-        );
-    }
-
-    #[test]
-    fun test_get_ebridge_protocol_fee_invalid() {
-        assert!(
-            get_ebridge_protocol_fee_invalid() == EBRIDGE_PROTOCOL_FEE_INVALID,
             TEST_SUCCESS
         );
     }
@@ -622,15 +790,6 @@ module aave_config::error_tests {
     }
 
     #[test]
-    fun test_get_einterest_rate_rebalance_conditions_not_met() {
-        assert!(
-            get_einterest_rate_rebalance_conditions_not_met()
-                == EINTEREST_RATE_REBALANCE_CONDITIONS_NOT_MET,
-            TEST_SUCCESS
-        );
-    }
-
-    #[test]
     fun test_get_ehealth_factor_not_below_threshold() {
         assert!(
             get_ehealth_factor_not_below_threshold()
@@ -672,14 +831,6 @@ module aave_config::error_tests {
     #[test]
     fun test_get_esupply_cap_exceeded() {
         assert!(get_esupply_cap_exceeded() == ESUPPLY_CAP_EXCEEDED, TEST_SUCCESS);
-    }
-
-    #[test]
-    fun test_get_eunbacked_mint_cap_exceededd() {
-        assert!(
-            get_eunbacked_mint_cap_exceeded() == EUNBACKED_MINT_CAP_EXCEEDED,
-            TEST_SUCCESS
-        );
     }
 
     #[test]
@@ -902,6 +1053,229 @@ module aave_config::error_tests {
     }
 
     #[test]
+    fun test_get_einvalid_max_rate() {
+        assert!(get_einvalid_max_rate() == EINVALID_MAX_RATE, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_ewithdraw_to_atoken() {
+        assert!(get_ewithdraw_to_atoken() == EWITHDRAW_TO_ATOKEN, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_esupply_to_atoken() {
+        assert!(get_esupply_to_atoken() == ESUPPLY_TO_ATOKEN, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_eslope_2_must_be_gte_slope_1() {
+        assert!(
+            get_eslope_2_must_be_gte_slope_1() == ESLOPE_2_MUST_BE_GTE_SLOPE_1,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_ecaller_not_risk_or_pool_or_emergency_admin() {
+        assert!(
+            get_ecaller_not_risk_or_pool_or_emergency_admin()
+                == ECALLER_NOT_RISK_OR_POOL_OR_EMERGENCY_ADMIN,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_eliquidation_grace_sentinel_check_failed() {
+        assert!(
+            get_eliquidation_grace_sentinel_check_failed()
+                == ELIQUIDATION_GRACE_SENTINEL_CHECK_FAILED,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_einvalid_grace_period() {
+        assert!(get_einvalid_grace_period() == EINVALID_GRACE_PERIOD, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_einvalid_freeze_flag() {
+        assert!(get_einvalid_freeze_flag() == EINVALID_FREEZE_FLAG, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_emust_not_leave_dust() {
+        assert!(get_emust_not_leave_dust() == EMUST_NOT_LEAVE_DUST, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_enot_acl_owner() {
+        assert!(get_enot_acl_owner() == ENOT_ACL_OWNER, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_erole_missmatch() {
+        assert!(get_erole_missmatch() == EROLE_MISSMATCH, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_erole_can_only_renounce_self() {
+        assert!(
+            get_erole_can_only_renounce_self() == EROLE_CAN_ONLY_RENOUNCE_SELF,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_eroles_not_initialized() {
+        assert!(get_eroles_not_initialized() == EROLES_NOT_INITIALIZED, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_eoverflow() {
+        assert!(get_eoverflow() == EOVERFLOW, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_edivision_by_zero() {
+        assert!(get_edivision_by_zero() == EDIVISION_BY_ZERO, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_eoracle_not_admin() {
+        assert!(get_eoracle_not_admin() == E_ORACLE_NOT_ADMIN, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_easset_already_exists() {
+        assert!(get_easset_already_exists() == E_ASSET_ALREADY_EXISTS, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_eno_asset_feed() {
+        assert!(get_eno_asset_feed() == E_NO_ASSET_FEED, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_eoralce_benchmark_length_mistmatch() {
+        assert!(
+            get_eoralce_benchmark_length_mistmatch()
+                == E_ORACLE_BENCHMARK_LENGHT_MISMATCH,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_enegative_oracle_price() {
+        assert!(get_enegative_oracle_price() == E_NEGATIVE_ORACLE_PRICE, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_ezero_oracle_price() {
+        assert!(get_ezero_oracle_price() == E_ZERO_ORACLE_PRICE, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_ecaller_not_pool_or_asset_listing_admin() {
+        assert!(
+            get_ecaller_not_pool_or_asset_listing_admin()
+                == ECALLER_NOT_RISK_OR_ASSET_LISTING_ADMIN,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_erequested_feed_ids_assets_mistmatch() {
+        assert!(
+            get_erequested_feed_ids_assets_mistmatch()
+                == E_REQUESTED_FEED_IDS_ASSETS_MISMATCH,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_edifferent_caller_on_behalf_of() {
+        assert!(
+            get_edifferent_caller_on_behalf_of() == EDIFFERENT_CALLER_ON_BEHALF_OF,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_eempty_feed_id() {
+        assert!(get_eempty_feed_id() == EEMPTY_FEED_ID, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_eno_asset_custom_price() {
+        assert!(get_eno_asset_custom_price() == E_NO_CUSTOM_PRICE, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_ezero_asset_custom_price() {
+        assert!(get_ezero_asset_custom_price() == E_ZERO_CUSTOM_PRICE, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_erequested_custom_prices_assets_mistmatch() {
+        assert!(
+            get_erequested_custom_prices_assets_mistmatch()
+                == E_REQUESTED_CUSTOM_PRICES_ASSETS_MISMATCH,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_easset_not_registered_with_oracle() {
+        assert!(
+            get_easset_not_registered_with_oracle()
+                == E_ASSET_NOT_REGISTERED_WITH_ORACLE,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_ecap_lower_than_actual_price() {
+        assert!(
+            get_ecap_lower_than_actual_price() == E_CAP_LOWER_THAN_ACTUAL_PRICE,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_easset_no_price_cap() {
+        assert!(get_easset_no_price_cap() == E_ASSET_NO_PRICE_CAP, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_enot_rate_owner() {
+        assert!(get_enot_rate_owner() == ENOT_RATE_OWNER, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_edefault_interest_rate_strategy_not_initialized() {
+        assert!(
+            get_edefault_interest_rate_strategy_not_initialized()
+                == EDEFAULT_INTEREST_RATE_STRATEGY_NOT_INITIALIZED,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_egho_interest_rate_strategy_not_initialized() {
+        assert!(
+            get_egho_interest_rate_strategy_not_initialized()
+                == EGHO_INTEREST_RATE_STRATEGY_NOT_INITIALIZED,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_enot_pool_owner() {
+        assert!(get_enot_pool_owner() == ENOT_POOL_OWNER, TEST_SUCCESS);
+    }
+
+    #[test]
     fun test_get_euser_not_listed() {
         assert!(get_euser_not_listed() == EUSER_NOT_LISTED, TEST_SUCCESS);
     }
@@ -938,5 +1312,255 @@ module aave_config::error_tests {
             get_eprice_oracle_check_failed() == EPRICE_ORACLE_CHECK_FAILED,
             TEST_SUCCESS
         );
+    }
+
+    #[test]
+    fun test_get_ereserve_list_not_initialized() {
+        assert!(
+            get_ereserve_list_not_initialized() == ERESERVE_LIST_NOT_INITIALIZED,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_etoken_already_exists() {
+        assert!(get_etoken_already_exists() == ETOKEN_ALREADY_EXISTS, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_etoken_not_exist() {
+        assert!(get_etoken_not_exist() == ETOKEN_NOT_EXIST, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_eresource_not_exist() {
+        assert!(get_eresource_not_exist() == ERESOURCE_NOT_EXIST, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_etoken_name_already_exist() {
+        assert!(
+            get_etoken_name_already_exist() == ETOKEN_NAME_ALREADY_EXIST, TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_etoken_symbol_already_exist() {
+        assert!(
+            get_etoken_symbol_already_exist() == ETOKEN_SYMBOL_ALREADY_EXIST,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_emin_asset_decimal_places() {
+        assert!(
+            get_emin_asset_decimal_places() == EMIN_ASSET_DECIMAL_PLACES, TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_ereserve_addresses_list_not_initialized() {
+        assert!(
+            get_ereserve_addresses_list_not_initialized()
+                == ERESERVE_ADDRESSES_LIST_NOT_INITIALIZED,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_einvalid_max_apt_fee() {
+        assert!(get_einvalid_max_apt_fee() == EINVALID_MAX_APT_FEE, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_einsufficient_coins_to_wrap() {
+        assert!(
+            get_einsufficient_coins_to_wrap() == EINSUFFICIENT_COINS_TO_WRAP,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_einsufficient_fas_to_unwrap() {
+        assert!(
+            get_einsufficient_fas_to_unwrap() == EINSUFFICIENT_FAS_TO_UNWRAP,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_eunmapped_coin_to_fa() {
+        assert!(get_eunmapped_coin_to_fa() == EUNMAPPED_COIN_TO_FA, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_enot_rewards_admin() {
+        assert!(get_enot_rewards_admin() == ENOT_REWARDS_ADMIN, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_eincentives_controller_mismatch() {
+        assert!(
+            get_eincentives_controller_mismatch() == EINCENTIVES_CONTROLLER_MISMATCH,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_eunauthorized_claimer() {
+        assert!(get_eunauthorized_claimer() == EUNAHTHORIZED_CLAIMER, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_ereward_index_overflow() {
+        assert!(get_ereward_index_overflow() == EREWARD_INDEX_OVERFLOW, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_einvalid_reward_config() {
+        assert!(get_einvalid_reward_config() == EINVALID_REWARD_CONFIG, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_edistribution_does_not_exist() {
+        assert!(
+            get_edistribution_does_not_exist() == EDISTRIBUTION_DOES_NOT_EXIST,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_ereward_transfer_failed() {
+        assert!(get_ereward_transfer_failed() == EREWARD_TRANSFER_FAILED, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_enot_emission_admin() {
+        assert!(get_enot_emission_admin() == ENOT_EMISSION_ADMIN, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_erewards_controller_not_defined() {
+        assert!(
+            get_erewards_controller_not_defined() == EREWARDS_CONTROLLER_NOT_DEFINED,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_enot_ecosystem_reserve_funds_admin() {
+        assert!(
+            get_enot_ecosystem_reserve_funds_admin()
+                == ENOT_ECOSYSTEM_RESERVE_FUNDS_ADMIN,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_enot_ecosystem_admin_or_recipient() {
+        assert!(
+            get_enot_ecosystem_admin_or_recipient()
+                == ENOT_ECOSYSTEM_ADMIN_OR_RECIPIENT,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_estream_not_exist() {
+        assert!(get_estream_not_exist() == ESTREAM_NOT_EXIST, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_estream_to_the_contract_itself() {
+        assert!(
+            get_estream_to_the_contract_itself() == ESTREAM_TO_THE_CONTRACT_ITSELF,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_estream_to_the_caller() {
+        assert!(get_estream_to_the_caller() == ESTREAM_TO_THE_CALLER, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_estream_deposit_is_zero() {
+        assert!(get_estream_deposit_is_zero() == ESTREAM_DEPOSIT_IS_ZERO, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_estart_time_before_block_timestamp() {
+        assert!(
+            get_estart_time_before_block_timestamp()
+                == ESTART_TIME_BEFORE_BLOCK_TIMESTAMP,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_estop_time_before_the_start_time() {
+        assert!(
+            get_estop_time_before_the_start_time() == ESTOP_TIME_BEFORE_THE_START_TIME,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_edeposit_smaller_than_time_delta() {
+        assert!(
+            get_edeposit_smaller_than_time_delta() == EDEPOSIT_SMALLER_THAN_TIME_DELTA,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_edeposit_not_multiple_of_time_delta() {
+        assert!(
+            get_edeposit_not_multiple_of_time_delta()
+                == EDEPOSIT_NOT_MULTIPLE_OF_TIME_DELTA,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_estream_withdraw_is_zero() {
+        assert!(get_estream_withdraw_is_zero() == ESTREAM_WITHDRAW_IS_ZERO, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_ewithdraw_exceeds_the_available_balance() {
+        assert!(
+            get_ewithdraw_exceeds_the_available_balance()
+                == EWITHDRAW_EXCEEDS_THE_AVAILABLE_BALANCE,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_einvalid_rewards_controller_address() {
+        assert!(
+            get_einvalid_rewards_controller_address()
+                == EINVALID_REWARDS_CONTROLLER_ADDRESS,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_ereward_not_exist() {
+        assert!(get_ereward_not_exist() == EREWARD_NOT_EXIST, TEST_SUCCESS)
+    }
+
+    #[test]
+    fun test_get_estore_for_asset_not_exist() {
+        assert!(
+            get_estore_for_asset_not_exist() == ESTORE_FOR_ASSET_NOT_EXIST,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test]
+    fun test_get_einvalid_emission_rate() {
+        assert!(get_einvalid_emission_rate() == EINVALID_EMISSION_RATE, TEST_SUCCESS)
     }
 }

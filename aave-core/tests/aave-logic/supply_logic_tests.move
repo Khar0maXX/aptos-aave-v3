@@ -1,34 +1,34 @@
 #[test_only]
 module aave_pool::supply_logic_tests {
-    use std::features::change_feature_flags_for_testing;
     use std::option::Self;
     use std::signer;
-    use std::string::{String, utf8};
+    use std::string::utf8;
     use std::vector;
-    use aptos_std::string_utils;
+    use aptos_std::debug::print;
     use aptos_framework::account;
+    use aptos_framework::aptos_coin;
+    use aptos_framework::aptos_coin::AptosCoin;
+    use aptos_framework::coin;
     use aptos_framework::event::emitted_events;
-    use aptos_framework::timestamp::set_time_has_started_for_testing;
-    use aave_acl::acl_manage::Self;
+    use aptos_framework::timestamp;
     use aave_config::reserve_config;
+    use aave_math::math_utils;
     use aave_math::wad_ray_math;
-    use aave_rate::default_reserve_interest_rate_strategy::Self;
-    use aave_rate::interest_rate_strategy;
+    use aave_pool::pool_data_provider;
+    use aave_pool::token_helper::convert_to_currency_decimals;
+    use aave_pool::pool_token_logic;
+    use aave_pool::pool;
+    use aave_pool::token_helper;
+    use aave_pool::pool_fee_manager;
     use aave_pool::a_token_factory::Self;
-    use aave_pool::collector;
     use aave_pool::emode_logic::{Self, configure_emode_category};
-    use aave_pool::mock_underlying_token_factory::Self;
-    use aave_pool::pool::{
-        get_reserve_data,
-        get_reserve_id,
-        get_reserve_liquidity_index,
-        test_set_reserve_configuration
-    };
+    use aave_pool::pool::{get_reserve_data, get_reserve_id, get_reserve_liquidity_index};
+    use aave_mock_underlyings::mock_underlying_token_factory::Self;
+    use aave_pool::coin_migrator;
     use aave_pool::pool_configurator;
     use aave_pool::pool_tests::create_user_config_for_reserve;
     use aave_pool::supply_logic::Self;
-    use aave_pool::token_base::Self;
-    use aave_pool::variable_debt_token_factory;
+    use aave_pool::events::Self;
 
     const TEST_SUCCESS: u64 = 1;
     const TEST_FAILED: u64 = 2;
@@ -36,14 +36,13 @@ module aave_pool::supply_logic_tests {
     #[
         test(
             aave_pool = @aave_pool,
-            aave_rate = @aave_rate,
             aave_role_super_admin = @aave_acl,
-            aave_oracle = @aave_oracle,
-            publisher = @data_feeds,
-            platform = @platform,
             aptos_std = @aptos_std,
-            supply_user = @0x042,
-            underlying_tokens_admin = @underlying_tokens
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            supply_user = @0x042
         )
     ]
     /// Reserve allows borrowing and being used as collateral.
@@ -51,155 +50,35 @@ module aave_pool::supply_logic_tests {
     /// User supplies and withdraws parts of the supplied amount
     fun test_supply_partial_withdraw(
         aave_pool: &signer,
-        aave_rate: &signer,
         aave_role_super_admin: &signer,
-        aave_oracle: &signer,
-        publisher: &signer,
-        platform: &signer,
         aptos_std: &signer,
-        supply_user: &signer,
-        underlying_tokens_admin: &signer
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        supply_user: &signer
     ) {
-        // start the timer
-        set_time_has_started_for_testing(aptos_std);
-
-        // add the test events feature flag
-        change_feature_flags_for_testing(aptos_std, vector[26], vector[]);
-
-        // create test accounts
-        account::create_account_for_test(signer::address_of(aave_pool));
-
-        // init the acl module and make aave_pool the asset listing/pool admin
-        acl_manage::test_init_module(aave_role_super_admin);
-        acl_manage::add_asset_listing_admin(aave_role_super_admin, @aave_pool);
-        acl_manage::add_pool_admin(aave_role_super_admin, @aave_pool);
-
-        // init collector
-        collector::init_module_test(aave_pool);
-        let collector_address = collector::collector_address();
-
-        // init token base (a tokens and var tokens)
-        token_base::test_init_module(aave_pool);
-
-        // init a token factory
-        a_token_factory::test_init_module(aave_pool);
-
-        // init debt token factory
-        variable_debt_token_factory::test_init_module(aave_pool);
-
-        // init underlying tokens
-        mock_underlying_token_factory::test_init_module(aave_pool);
-
-        // init the oracle module
-        aave_oracle::oracle_tests::config_oracle(aave_oracle, publisher, platform);
-
-        // init pool_configurator & reserves module
-        pool_configurator::test_init_module(aave_pool);
-
-        // init rate
-        interest_rate_strategy::test_init_module(aave_rate);
-
-        // init input data for creating pool reserves
-        let treasuries: vector<address> = vector[];
-
-        // prepare pool reserves
-        let underlying_assets: vector<address> = vector[];
-        let underlying_asset_decimals: vector<u8> = vector[];
-        let atokens_names: vector<String> = vector[];
-        let atokens_symbols: vector<String> = vector[];
-        let var_tokens_names: vector<String> = vector[];
-        let var_tokens_symbols: vector<String> = vector[];
-        let num_assets = 3;
-        for (i in 0..num_assets) {
-            let name = string_utils::format1(&b"APTOS_UNDERLYING_{}", i);
-            let symbol = string_utils::format1(&b"U_{}", i);
-            let decimals = 2 + i;
-            let max_supply = 10000;
-            mock_underlying_token_factory::create_token(
-                underlying_tokens_admin,
-                max_supply,
-                name,
-                symbol,
-                decimals,
-                utf8(b""),
-                utf8(b"")
-            );
-
-            let underlying_token_address =
-                mock_underlying_token_factory::token_address(symbol);
-
-            // init the default interest rate strategy for the underlying_token_address
-            let optimal_usage_ratio: u256 = wad_ray_math::get_half_ray_for_testing();
-            let base_variable_borrow_rate: u256 = 0;
-            let variable_rate_slope1: u256 = 0;
-            let variable_rate_slope2: u256 = 0;
-            default_reserve_interest_rate_strategy::set_reserve_interest_rate_strategy(
-                aave_pool,
-                underlying_token_address,
-                optimal_usage_ratio,
-                base_variable_borrow_rate,
-                variable_rate_slope1,
-                variable_rate_slope2
-            );
-
-            // prepare the data for reserve's atokens and variable tokens
-            vector::push_back(&mut underlying_assets, underlying_token_address);
-            vector::push_back(&mut underlying_asset_decimals, decimals);
-            vector::push_back(&mut treasuries, collector_address);
-            vector::push_back(
-                &mut atokens_names, string_utils::format1(&b"APTOS_A_TOKEN_{}", i)
-            );
-            vector::push_back(&mut atokens_symbols, string_utils::format1(&b"A_{}", i));
-            vector::push_back(
-                &mut var_tokens_names, string_utils::format1(&b"APTOS_VAR_TOKEN_{}", i)
-            );
-            vector::push_back(
-                &mut var_tokens_symbols, string_utils::format1(&b"V_{}", i)
-            );
-        };
-
-        // create pool reserves
-        pool_configurator::init_reserves(
+        token_helper::init_reserves_with_oracle(
             aave_pool,
-            underlying_assets,
-            treasuries,
-            atokens_names,
-            atokens_symbols,
-            var_tokens_names,
-            var_tokens_symbols
+            aave_role_super_admin,
+            aptos_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
         );
 
-        // create reserve configurations
-        for (j in 0..num_assets) {
-            let reserve_config_new = reserve_config::init();
-            let decimals = (
-                *vector::borrow(&underlying_asset_decimals, (j as u64)) as u256
-            );
-            reserve_config::set_decimals(&mut reserve_config_new, decimals);
-            reserve_config::set_active(&mut reserve_config_new, true);
-            reserve_config::set_frozen(&mut reserve_config_new, false);
-            reserve_config::set_paused(&mut reserve_config_new, false);
-            reserve_config::set_flash_loan_enabled(&mut reserve_config_new, false); // NOTE: disable flashloan enabled
-            reserve_config::set_ltv(&mut reserve_config_new, 5000); // NOTE: set ltv
-            reserve_config::set_debt_ceiling(&mut reserve_config_new, 0); // NOTE: set no debt ceiling
-            reserve_config::set_borrowable_in_isolation(&mut reserve_config_new, false); // NOTE: set no borrowable in isolation
-            reserve_config::set_siloed_borrowing(&mut reserve_config_new, false); // NOTE: set no sillowed borrowing
-            reserve_config::set_borrowing_enabled(&mut reserve_config_new, true); // NOTE: set borrowing enabled
-            test_set_reserve_configuration(
-                *vector::borrow(&underlying_assets, (j as u64)), reserve_config_new
-            );
-        };
-
         // get one underlying asset data
-        let underlying_token_address = *vector::borrow(&underlying_assets, 0);
-
+        let underlying_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
         // get the reserve config for it
         let reserve_data = get_reserve_data(underlying_token_address);
 
         // init user config for reserve index
         create_user_config_for_reserve(
             signer::address_of(supply_user),
-            (get_reserve_id(&reserve_data) as u256),
+            (get_reserve_id(reserve_data) as u256),
             option::some(false),
             option::some(true)
         );
@@ -257,29 +136,37 @@ module aave_pool::supply_logic_tests {
             TEST_SUCCESS
         );
         // > check a_token underlying balance
-        let a_token_address =
-            a_token_factory::token_address(
-                signer::address_of(aave_pool),
-                *vector::borrow(&atokens_symbols, 0)
-            );
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
         let atoken_acocunt_address =
             a_token_factory::get_token_account_address(a_token_address);
-        let underlying_acocunt_balance =
+        let underlying_atoken_acocunt_balance =
             mock_underlying_token_factory::balance_of(
                 atoken_acocunt_address, underlying_token_address
             );
-        assert!(underlying_acocunt_balance == supplied_amount, TEST_SUCCESS);
+        assert!(underlying_atoken_acocunt_balance == supplied_amount, TEST_SUCCESS);
+
         // > check user a_token balance after supply
         let supplied_amount_scaled =
             wad_ray_math::ray_div(
                 (supplied_amount as u256),
-                (get_reserve_liquidity_index(&reserve_data) as u256)
+                (get_reserve_liquidity_index(reserve_data) as u256)
             );
         let supplier_a_token_balance =
             a_token_factory::scaled_balance_of(
                 signer::address_of(supply_user), a_token_address
             );
         assert!(supplier_a_token_balance == supplied_amount_scaled, TEST_SUCCESS);
+
+        // mint 1 APT to the supply_user
+        let mint_apt_amount = 100000000;
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            signer::address_of(supply_user), mint_apt_amount
+        );
+        assert!(
+            coin::balance<AptosCoin>(signer::address_of(supply_user))
+                == mint_apt_amount,
+            TEST_SUCCESS
+        );
 
         // =============== USER WITHDRAWS ================= //
         // user withdraws a small amount of the supplied amount
@@ -306,17 +193,19 @@ module aave_pool::supply_logic_tests {
                 == option::some(100),
             TEST_SUCCESS
         );
+
         // > check user a_token balance after withdrawal
         let supplied_amount_scaled =
             wad_ray_math::ray_div(
                 (supplied_amount - amount_to_withdraw as u256),
-                (get_reserve_liquidity_index(&reserve_data) as u256)
+                (get_reserve_liquidity_index(reserve_data) as u256)
             );
         let supplier_a_token_balance =
             a_token_factory::scaled_balance_of(
                 signer::address_of(supply_user), a_token_address
             );
         assert!(supplier_a_token_balance == supplied_amount_scaled, TEST_SUCCESS);
+
         // > check users underlying tokens balance
         let supplier_underlying_balance_after_withdraw =
             mock_underlying_token_factory::balance_of(
@@ -327,11 +216,19 @@ module aave_pool::supply_logic_tests {
                 == initial_user_balance - supplied_amount + amount_to_withdraw,
             TEST_SUCCESS
         );
+
+        assert!(
+            coin::balance<AptosCoin>(signer::address_of(supply_user))
+                == mint_apt_amount
+                    - pool_fee_manager::get_apt_fee(underlying_token_address),
+            TEST_SUCCESS
+        );
+
         // > check emitted events
         let emitted_withdraw_events = emitted_events<supply_logic::Withdraw>();
         assert!(vector::length(&emitted_withdraw_events) == 1, TEST_SUCCESS);
         let emitted_reserve_collecteral_disabled_events =
-            emitted_events<supply_logic::ReserveUsedAsCollateralDisabled>();
+            emitted_events<events::ReserveUsedAsCollateralDisabled>();
         assert!(
             vector::length(&emitted_reserve_collecteral_disabled_events) == 0,
             TEST_SUCCESS
@@ -341,14 +238,13 @@ module aave_pool::supply_logic_tests {
     #[
         test(
             aave_pool = @aave_pool,
-            aave_rate = @aave_rate,
             aave_role_super_admin = @aave_acl,
             aave_oracle = @aave_oracle,
-            publisher = @data_feeds,
+            data_feeds = @data_feeds,
             platform = @platform,
             aptos_std = @aptos_std,
             supply_user = @0x042,
-            underlying_tokens_admin = @underlying_tokens
+            underlying_tokens_admin = @aave_mock_underlyings
         )
     ]
     /// Reserve allows borrowing and being used as collateral.
@@ -356,170 +252,42 @@ module aave_pool::supply_logic_tests {
     /// User supplies and withdraws the entire amount
     fun test_supply_full_collateral_withdraw(
         aave_pool: &signer,
-        aave_rate: &signer,
         aave_role_super_admin: &signer,
         aave_oracle: &signer,
-        publisher: &signer,
+        data_feeds: &signer,
         platform: &signer,
         aptos_std: &signer,
         supply_user: &signer,
         underlying_tokens_admin: &signer
     ) {
-        // start the timer
-        set_time_has_started_for_testing(aptos_std);
+        token_helper::init_reserves_with_oracle(
+            aave_pool,
+            aave_role_super_admin,
+            aptos_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
 
-        // add the test events feature flag
-        change_feature_flags_for_testing(aptos_std, vector[26], vector[]);
-
-        // create test accounts
-        account::create_account_for_test(signer::address_of(aave_pool));
-
-        // init the acl module and make aave_pool the asset listing/pool admin
-        acl_manage::test_init_module(aave_role_super_admin);
-        acl_manage::add_asset_listing_admin(aave_role_super_admin, @aave_pool);
-        acl_manage::add_pool_admin(aave_role_super_admin, @aave_pool);
-
-        // init collector
-        collector::init_module_test(aave_pool);
-        let collector_address = collector::collector_address();
-
-        // init token base (a tokens and var tokens)
-        token_base::test_init_module(aave_pool);
-
-        // init a token factory
-        a_token_factory::test_init_module(aave_pool);
-
-        // init debt token factory
-        variable_debt_token_factory::test_init_module(aave_pool);
-
-        // init underlying tokens
-        mock_underlying_token_factory::test_init_module(aave_pool);
-
-        // init the oracle module
-        aave_oracle::oracle_tests::config_oracle(aave_oracle, publisher, platform);
-
-        // init pool_configurator & reserves module
-        pool_configurator::test_init_module(aave_pool);
-
-        // init rate
-        interest_rate_strategy::test_init_module(aave_rate);
-
-        // init input data for creating pool reserves
-        let treasuries: vector<address> = vector[];
+        // get one underlying asset data
+        let underlying_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
 
         // define an emode cat for reserve and user
         let emode_cat_id: u8 = 1;
         // configure an emode category
-        let ltv: u16 = 100;
-        let liquidation_threshold: u16 = 200;
-        let liquidation_bonus: u16 = 300;
-        let price_source: address = signer::address_of(aave_oracle);
+        let ltv: u16 = 8800;
+        let liquidation_threshold: u16 = 9800;
+        let liquidation_bonus: u16 = 11000;
         let label = utf8(b"MODE1");
         configure_emode_category(
             emode_cat_id,
             ltv,
             liquidation_threshold,
             liquidation_bonus,
-            price_source,
             label
-        );
-
-        // prepare pool reserves
-        let underlying_assets: vector<address> = vector[];
-        let underlying_asset_decimals: vector<u8> = vector[];
-        let atokens_names: vector<String> = vector[];
-        let atokens_symbols: vector<String> = vector[];
-        let var_tokens_names: vector<String> = vector[];
-        let var_tokens_symbols: vector<String> = vector[];
-        let num_assets = 3;
-        for (i in 0..num_assets) {
-            let name = string_utils::format1(&b"APTOS_UNDERLYING_{}", i);
-            let symbol = string_utils::format1(&b"U_{}", i);
-            let decimals = 2 + i;
-            let max_supply = 10000;
-            mock_underlying_token_factory::create_token(
-                underlying_tokens_admin,
-                max_supply,
-                name,
-                symbol,
-                decimals,
-                utf8(b""),
-                utf8(b"")
-            );
-
-            let underlying_token_address =
-                mock_underlying_token_factory::token_address(symbol);
-
-            // init the default interest rate strategy for the underlying_token_address
-            let optimal_usage_ratio: u256 = wad_ray_math::get_half_ray_for_testing();
-            let base_variable_borrow_rate: u256 = 0;
-            let variable_rate_slope1: u256 = 0;
-            let variable_rate_slope2: u256 = 0;
-            default_reserve_interest_rate_strategy::set_reserve_interest_rate_strategy(
-                aave_pool,
-                underlying_token_address,
-                optimal_usage_ratio,
-                base_variable_borrow_rate,
-                variable_rate_slope1,
-                variable_rate_slope2
-            );
-
-            // prepare the data for reserve's atokens and variable tokens
-            vector::push_back(&mut underlying_assets, underlying_token_address);
-            vector::push_back(&mut underlying_asset_decimals, decimals);
-            vector::push_back(&mut treasuries, collector_address);
-            vector::push_back(
-                &mut atokens_names, string_utils::format1(&b"APTOS_A_TOKEN_{}", i)
-            );
-            vector::push_back(&mut atokens_symbols, string_utils::format1(&b"A_{}", i));
-            vector::push_back(
-                &mut var_tokens_names, string_utils::format1(&b"APTOS_VAR_TOKEN_{}", i)
-            );
-            vector::push_back(
-                &mut var_tokens_symbols, string_utils::format1(&b"V_{}", i)
-            );
-        };
-
-        // create pool reserves
-        pool_configurator::init_reserves(
-            aave_pool,
-            underlying_assets,
-            treasuries,
-            atokens_names,
-            atokens_symbols,
-            var_tokens_names,
-            var_tokens_symbols
-        );
-
-        // create reserve configurations
-        for (j in 0..num_assets) {
-            let reserve_config_new = reserve_config::init();
-            let decimals = (
-                *vector::borrow(&underlying_asset_decimals, (j as u64)) as u256
-            );
-            reserve_config::set_decimals(&mut reserve_config_new, decimals);
-            reserve_config::set_active(&mut reserve_config_new, true);
-            reserve_config::set_frozen(&mut reserve_config_new, false);
-            reserve_config::set_paused(&mut reserve_config_new, false);
-            reserve_config::set_flash_loan_enabled(&mut reserve_config_new, false); // NOTE: disable flashloan enabled
-            reserve_config::set_ltv(&mut reserve_config_new, 5000); // NOTE: set ltv
-            reserve_config::set_debt_ceiling(&mut reserve_config_new, 0); // NOTE: set no debt ceiling
-            reserve_config::set_borrowable_in_isolation(&mut reserve_config_new, false); // NOTE: set no borrowable in isolation
-            reserve_config::set_siloed_borrowing(&mut reserve_config_new, false); // NOTE: set no sillowed borrowing
-            reserve_config::set_borrowing_enabled(&mut reserve_config_new, true); // NOTE: set borrowing enabled
-            test_set_reserve_configuration(
-                *vector::borrow(&underlying_assets, (j as u64)), reserve_config_new
-            );
-        };
-
-        // get one underlying asset data
-        let underlying_token_address = *vector::borrow(&underlying_assets, 0);
-
-        // register asset with oracle feed_id
-        aave_oracle::oracle::set_asset_feed_id(
-            aave_pool,
-            underlying_token_address,
-            aave_oracle::oracle_tests::get_test_feed_id()
         );
 
         // set underlying emode category
@@ -533,9 +301,17 @@ module aave_pool::supply_logic_tests {
         // init user config for reserve index
         create_user_config_for_reserve(
             signer::address_of(supply_user),
-            (get_reserve_id(&reserve_data) as u256),
+            (get_reserve_id(reserve_data) as u256),
             option::some(true),
             option::some(true)
+        );
+
+        // set asset price
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_token_address,
+            10
         );
 
         // =============== MINT UNDERLYING FOR USER ================= //
@@ -594,11 +370,7 @@ module aave_pool::supply_logic_tests {
             TEST_SUCCESS
         );
         // > check underlying balance of atoken
-        let a_token_address =
-            a_token_factory::token_address(
-                signer::address_of(aave_pool),
-                *vector::borrow(&atokens_symbols, 0)
-            );
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
         let atoken_account_address =
             a_token_factory::get_token_account_address(a_token_address);
         let underlying_acocunt_balance =
@@ -606,17 +378,29 @@ module aave_pool::supply_logic_tests {
                 atoken_account_address, underlying_token_address
             );
         assert!(underlying_acocunt_balance == supplied_amount, TEST_SUCCESS);
+
         // > check user a_token balance after supply
         let supplied_amount_scaled =
             wad_ray_math::ray_div(
                 (supplied_amount as u256),
-                (get_reserve_liquidity_index(&reserve_data) as u256)
+                (get_reserve_liquidity_index(reserve_data) as u256)
             );
         let supplier_a_token_balance =
             a_token_factory::scaled_balance_of(
                 signer::address_of(supply_user), a_token_address
             );
         assert!(supplier_a_token_balance == supplied_amount_scaled, TEST_SUCCESS);
+
+        // mint 1 APT to the supply_user
+        let mint_apt_amount = 100000000;
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            signer::address_of(supply_user), mint_apt_amount
+        );
+        assert!(
+            coin::balance<AptosCoin>(signer::address_of(supply_user))
+                == mint_apt_amount,
+            TEST_SUCCESS
+        );
 
         // =============== USER WITHDRAWS ================= //
         // user withdraws his entire supply
@@ -634,18 +418,21 @@ module aave_pool::supply_logic_tests {
                 atoken_account_address, underlying_token_address
             );
         assert!(atoken_acocunt_balance == 0, TEST_SUCCESS);
+
         // > check underlying supply
         assert!(
             mock_underlying_token_factory::supply(underlying_token_address)
                 == option::some(100),
             TEST_SUCCESS
         );
+
         // > check user a_token balance after withdrawal
         let supplier_a_token_balance =
             a_token_factory::scaled_balance_of(
                 signer::address_of(supply_user), a_token_address
             );
         assert!(supplier_a_token_balance == 0, TEST_SUCCESS);
+
         // > check users underlying tokens balance
         let supplier_underlying_balance_after_withdraw =
             mock_underlying_token_factory::balance_of(
@@ -656,11 +443,19 @@ module aave_pool::supply_logic_tests {
                 == initial_user_balance - supplied_amount + amount_to_withdraw,
             TEST_SUCCESS
         );
+
+        assert!(
+            coin::balance<AptosCoin>(signer::address_of(supply_user))
+                == mint_apt_amount
+                    - pool_fee_manager::get_apt_fee(underlying_token_address),
+            TEST_SUCCESS
+        );
+
         // > check emitted events
         let emitted_withdraw_events = emitted_events<supply_logic::Withdraw>();
         assert!(vector::length(&emitted_withdraw_events) == 1, TEST_SUCCESS);
         let emitted_reserve_collecteral_disabled_events =
-            emitted_events<supply_logic::ReserveUsedAsCollateralDisabled>();
+            emitted_events<events::ReserveUsedAsCollateralDisabled>();
         assert!(
             vector::length(&emitted_reserve_collecteral_disabled_events) == 1,
             TEST_SUCCESS
@@ -670,14 +465,10 @@ module aave_pool::supply_logic_tests {
     #[
         test(
             aave_pool = @aave_pool,
-            aave_rate = @aave_rate,
             aave_role_super_admin = @aave_acl,
-            aave_oracle = @aave_oracle,
-            publisher = @data_feeds,
-            platform = @platform,
             aptos_std = @aptos_std,
-            supply_user = @0x042,
-            underlying_tokens_admin = @underlying_tokens
+            underlying_tokens_admin = @aave_mock_underlyings,
+            supply_user = @0x042
         )
     ]
     /// Reserve allows borrowing and being used as collateral.
@@ -686,164 +477,36 @@ module aave_pool::supply_logic_tests {
     /// with ltv and no debt ceiling, and not using as collateral already
     fun test_supply_use_as_collateral(
         aave_pool: &signer,
-        aave_rate: &signer,
         aave_role_super_admin: &signer,
-        aave_oracle: &signer,
-        publisher: &signer,
-        platform: &signer,
         aptos_std: &signer,
-        supply_user: &signer,
-        underlying_tokens_admin: &signer
+        underlying_tokens_admin: &signer,
+        supply_user: &signer
     ) {
-        // start the timer
-        set_time_has_started_for_testing(aptos_std);
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aptos_std,
+            underlying_tokens_admin
+        );
 
-        // add the test events feature flag
-        change_feature_flags_for_testing(aptos_std, vector[26], vector[]);
-
-        // create test accounts
-        account::create_account_for_test(signer::address_of(aave_pool));
-
-        // init the acl module and make aave_pool the asset listing/pool admin
-        acl_manage::test_init_module(aave_role_super_admin);
-        acl_manage::add_asset_listing_admin(aave_role_super_admin, @aave_pool);
-        acl_manage::add_pool_admin(aave_role_super_admin, @aave_pool);
-
-        // init collector
-        collector::init_module_test(aave_pool);
-        let collector_address = collector::collector_address();
-
-        // init token base (a tokens and var tokens)
-        token_base::test_init_module(aave_pool);
-
-        // init a token factory
-        a_token_factory::test_init_module(aave_pool);
-
-        // init debt token factory
-        variable_debt_token_factory::test_init_module(aave_pool);
-
-        // init underlying tokens
-        mock_underlying_token_factory::test_init_module(aave_pool);
-
-        // init the oracle module
-        aave_oracle::oracle_tests::config_oracle(aave_oracle, publisher, platform);
-
-        // init pool_configurator & reserves module
-        pool_configurator::test_init_module(aave_pool);
-
-        // init rate
-        interest_rate_strategy::test_init_module(aave_rate);
-
-        // init input data for creating pool reserves
-        let treasuries: vector<address> = vector[];
+        // get one underlying asset data
+        let underlying_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_0"));
 
         // define an emode cat for reserve and user
         let emode_cat_id: u8 = 1;
         // configure an emode category
-        let ltv: u16 = 100;
-        let liquidation_threshold: u16 = 200;
-        let liquidation_bonus: u16 = 300;
-        let price_source: address = signer::address_of(aave_oracle);
+        let ltv: u16 = 8500;
+        let liquidation_threshold: u16 = 9000;
+        let liquidation_bonus: u16 = 10500;
         let label = utf8(b"MODE1");
         configure_emode_category(
             emode_cat_id,
             ltv,
             liquidation_threshold,
             liquidation_bonus,
-            price_source,
             label
         );
-
-        // prepare pool reserves
-        let underlying_assets: vector<address> = vector[];
-        let underlying_asset_decimals: vector<u8> = vector[];
-        let atokens_names: vector<String> = vector[];
-        let atokens_symbols: vector<String> = vector[];
-        let var_tokens_names: vector<String> = vector[];
-        let var_tokens_symbols: vector<String> = vector[];
-        let num_assets = 3;
-        for (i in 0..num_assets) {
-            let name = string_utils::format1(&b"APTOS_UNDERLYING_{}", i);
-            let symbol = string_utils::format1(&b"U_{}", i);
-            let decimals = 2 + i;
-            let max_supply = 10000;
-            mock_underlying_token_factory::create_token(
-                underlying_tokens_admin,
-                max_supply,
-                name,
-                symbol,
-                decimals,
-                utf8(b""),
-                utf8(b"")
-            );
-
-            let underlying_token_address =
-                mock_underlying_token_factory::token_address(symbol);
-
-            // init the default interest rate strategy for the underlying_token_address
-            let optimal_usage_ratio: u256 = wad_ray_math::get_half_ray_for_testing();
-            let base_variable_borrow_rate: u256 = 0;
-            let variable_rate_slope1: u256 = 0;
-            let variable_rate_slope2: u256 = 0;
-            default_reserve_interest_rate_strategy::set_reserve_interest_rate_strategy(
-                aave_pool,
-                underlying_token_address,
-                optimal_usage_ratio,
-                base_variable_borrow_rate,
-                variable_rate_slope1,
-                variable_rate_slope2
-            );
-
-            // prepare the data for reserve's atokens and variable tokens
-            vector::push_back(&mut underlying_assets, underlying_token_address);
-            vector::push_back(&mut underlying_asset_decimals, decimals);
-            vector::push_back(&mut treasuries, collector_address);
-            vector::push_back(
-                &mut atokens_names, string_utils::format1(&b"APTOS_A_TOKEN_{}", i)
-            );
-            vector::push_back(&mut atokens_symbols, string_utils::format1(&b"A_{}", i));
-            vector::push_back(
-                &mut var_tokens_names, string_utils::format1(&b"APTOS_VAR_TOKEN_{}", i)
-            );
-            vector::push_back(
-                &mut var_tokens_symbols, string_utils::format1(&b"V_{}", i)
-            );
-        };
-
-        // create pool reserves
-        pool_configurator::init_reserves(
-            aave_pool,
-            underlying_assets,
-            treasuries,
-            atokens_names,
-            atokens_symbols,
-            var_tokens_names,
-            var_tokens_symbols
-        );
-
-        // create reserve configurations
-        for (j in 0..num_assets) {
-            let reserve_config_new = reserve_config::init();
-            let decimals = (
-                *vector::borrow(&underlying_asset_decimals, (j as u64)) as u256
-            );
-            reserve_config::set_decimals(&mut reserve_config_new, decimals);
-            reserve_config::set_active(&mut reserve_config_new, true);
-            reserve_config::set_frozen(&mut reserve_config_new, false);
-            reserve_config::set_paused(&mut reserve_config_new, false);
-            reserve_config::set_flash_loan_enabled(&mut reserve_config_new, false); // NOTE: disable flashloan enabled
-            reserve_config::set_ltv(&mut reserve_config_new, 5000); // NOTE: set ltv
-            reserve_config::set_debt_ceiling(&mut reserve_config_new, 0); // NOTE: set no debt ceiling
-            reserve_config::set_borrowable_in_isolation(&mut reserve_config_new, false); // NOTE: set no borrowable in isolation
-            reserve_config::set_siloed_borrowing(&mut reserve_config_new, false); // NOTE: set no sillowed borrowing
-            reserve_config::set_borrowing_enabled(&mut reserve_config_new, true); // NOTE: set borrowing enabled
-            test_set_reserve_configuration(
-                *vector::borrow(&underlying_assets, (j as u64)), reserve_config_new
-            );
-        };
-
-        // get one underlying asset data
-        let underlying_token_address = *vector::borrow(&underlying_assets, 0);
 
         // set underlying emode category
         pool_configurator::set_asset_emode_category(
@@ -856,7 +519,7 @@ module aave_pool::supply_logic_tests {
         // init user config for reserve index
         create_user_config_for_reserve(
             signer::address_of(supply_user),
-            (get_reserve_id(&reserve_data) as u256),
+            (get_reserve_id(reserve_data) as u256),
             option::some(true),
             option::some(false) // NOTE: not using any as collateral already
         );
@@ -899,7 +562,7 @@ module aave_pool::supply_logic_tests {
         let emitted_supply_events = emitted_events<supply_logic::Supply>();
         assert!(vector::length(&emitted_supply_events) == 1, TEST_SUCCESS);
         let emitted_reserve_used_as_collateral_events =
-            emitted_events<supply_logic::ReserveUsedAsCollateralEnabled>();
+            emitted_events<events::ReserveUsedAsCollateralEnabled>();
         assert!(
             vector::length(&emitted_reserve_used_as_collateral_events) == 1,
             TEST_SUCCESS
@@ -920,11 +583,7 @@ module aave_pool::supply_logic_tests {
             TEST_SUCCESS
         );
         // > check a_token balance of underlying
-        let a_token_address =
-            a_token_factory::token_address(
-                signer::address_of(aave_pool),
-                *vector::borrow(&atokens_symbols, 0)
-            );
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
         let atoken_account_address =
             a_token_factory::get_token_account_address(a_token_address);
         let atoken_acocunt_balance =
@@ -936,12 +595,945 @@ module aave_pool::supply_logic_tests {
         let supplied_amount_scaled =
             wad_ray_math::ray_div(
                 (supplied_amount as u256),
-                (get_reserve_liquidity_index(&reserve_data) as u256)
+                (get_reserve_liquidity_index(reserve_data) as u256)
             );
         let supplier_a_token_balance =
             a_token_factory::scaled_balance_of(
                 signer::address_of(supply_user), a_token_address
             );
         assert!(supplier_a_token_balance == supplied_amount_scaled, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aptos_std = @aptos_std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            supply_user = @0x042
+        )
+    ]
+    fun test_supply_with_reserve_factor_is_zero(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aptos_std: &signer,
+        underlying_tokens_admin: &signer,
+        supply_user: &signer
+    ) {
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aptos_std,
+            underlying_tokens_admin
+        );
+
+        // get one underlying asset data
+        let underlying_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_0"));
+
+        // =============== MINT UNDERLYING FOR USER ================= //
+        // mint 100 underlying tokens for the user
+        let mint_receiver_address = signer::address_of(supply_user);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            mint_receiver_address,
+            100,
+            underlying_token_address
+        );
+        let initial_user_balance =
+            mock_underlying_token_factory::balance_of(
+                mint_receiver_address, underlying_token_address
+            );
+        // assert user balance of underlying
+        assert!(initial_user_balance == 100, TEST_SUCCESS);
+        // assert underlying supply
+        assert!(
+            mock_underlying_token_factory::supply(underlying_token_address)
+                == option::some(100),
+            TEST_SUCCESS
+        );
+
+        // set reserve factor to 0
+        let reserve_config_map =
+            pool::get_reserve_configuration(underlying_token_address);
+        reserve_config::set_reserve_factor(&mut reserve_config_map, 0);
+        pool::test_set_reserve_configuration(
+            underlying_token_address, reserve_config_map
+        );
+        assert!(
+            reserve_config::get_reserve_factor(&reserve_config_map) == 0, TEST_SUCCESS
+        );
+
+        // set global time
+        timestamp::update_global_time_for_test_secs(1000);
+
+        // =============== USER SUPPLY ================= //
+        // user supplies the underlying token
+        let supply_receiver_address = signer::address_of(supply_user);
+        let supplied_amount: u64 = 50;
+        supply_logic::supply(
+            supply_user,
+            underlying_token_address,
+            (supplied_amount as u256),
+            supply_receiver_address,
+            0
+        );
+
+        // > check emitted events
+        let emitted_supply_events = emitted_events<supply_logic::Supply>();
+        assert!(vector::length(&emitted_supply_events) == 1, TEST_SUCCESS);
+        let emitted_reserve_used_as_collateral_events =
+            emitted_events<events::ReserveUsedAsCollateralEnabled>();
+        assert!(
+            vector::length(&emitted_reserve_used_as_collateral_events) == 1,
+            TEST_SUCCESS
+        );
+        // > check supplier balance of underlying
+        let supplier_balance =
+            mock_underlying_token_factory::balance_of(
+                mint_receiver_address, underlying_token_address
+            );
+        assert!(
+            supplier_balance == initial_user_balance - supplied_amount,
+            TEST_SUCCESS
+        );
+        // > check underlying supply
+        assert!(
+            mock_underlying_token_factory::supply(underlying_token_address)
+                == option::some(100),
+            TEST_SUCCESS
+        );
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41,
+            user2 = @0x42
+        )
+    ]
+    // User 2 supply 100 U_0, transfers to user 1. Checks that U_0 is activated as collateral for user 1
+    fun test_supply_with_user2_transfer_user1_100_u0(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer,
+        user2: &signer
+    ) {
+        let user1_address = signer::address_of(user1);
+        let user2_address = signer::address_of(user2);
+
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u0_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_0"));
+        // User 2 mint 100000000 U_0.
+        let mint_u0_amount =
+            convert_to_currency_decimals(underlying_u0_token_address, 10000000);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user2_address,
+            (mint_u0_amount as u64),
+            underlying_u0_token_address
+        );
+
+        // User 2 supply 100 U_0. Checks that U_0 is not activated as collateral.
+        supply_logic::supply(
+            user2,
+            underlying_u0_token_address,
+            convert_to_currency_decimals(underlying_u0_token_address, 100),
+            user2_address,
+            0
+        );
+
+        // User 2 transfers 100 U_0 to user 1
+        let reserve_data = pool::get_reserve_data(underlying_u0_token_address);
+        let a_token_u0_address = pool::get_reserve_a_token_address(reserve_data);
+        pool_token_logic::transfer(
+            user2,
+            user1_address,
+            convert_to_currency_decimals(underlying_u0_token_address, 1),
+            a_token_u0_address
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u0_token_address, user1_address
+            );
+
+        assert!(usage_as_collateral_enabled == true, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41
+        )
+    ]
+    // User 1 deposit U_1, then tries to use U_1 isolation emode
+    fun test_supply_with_u1_isolation_emode(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer
+    ) {
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+
+        // mint 100 underlying tokens for user1
+        let user1_address = signer::address_of(user1);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (convert_to_currency_decimals(underlying_u1_token_address, 100) as u64),
+            underlying_u1_token_address
+        );
+
+        //  set debt ceiling for U_1
+        let new_debt_ceiling = 10000;
+        pool_configurator::set_debt_ceiling(
+            aave_pool,
+            underlying_u1_token_address,
+            new_debt_ceiling
+        );
+
+        // User1 supply 100 underlying tokens to aave_pool
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            convert_to_currency_decimals(underlying_u1_token_address, 100),
+            user1_address,
+            0
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+        assert!(usage_as_collateral_enabled == false, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41
+        )
+    ]
+    // User 1 deposit U_1, set u1 ltv is zero
+    fun test_supply_with_u1_ltv_is_zreo(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer
+    ) {
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+
+        // mint 100 underlying tokens for user1
+        let user1_address = signer::address_of(user1);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (convert_to_currency_decimals(underlying_u1_token_address, 100) as u64),
+            underlying_u1_token_address
+        );
+
+        let reserve_config_map =
+            pool::get_reserve_configuration(underlying_u1_token_address);
+        reserve_config::set_ltv(&mut reserve_config_map, 0);
+        pool::test_set_reserve_configuration(
+            underlying_u1_token_address, reserve_config_map
+        );
+
+        // User1 supply 100 underlying tokens to aave_pool
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            convert_to_currency_decimals(underlying_u1_token_address, 100),
+            user1_address,
+            0
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+        assert!(usage_as_collateral_enabled == false, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41
+        )
+    ]
+    // User 1 deposit U_0 and U_1, then tries to use U_1 enable collateral
+    fun test_supply_with_u1_isolation_emode_and_u1_enable_collateral(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer
+    ) {
+        let user1_address = signer::address_of(user1);
+
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u0_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_0"));
+        // User 1 mint 100000000 U_0.
+        let mint_u0_amount =
+            convert_to_currency_decimals(underlying_u0_token_address, 10000000);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_u0_amount as u64),
+            underlying_u0_token_address
+        );
+
+        // User 1 supply 1 U_0. Checks that U_0 is not activated as collateral.
+        supply_logic::supply(
+            user1,
+            underlying_u0_token_address,
+            convert_to_currency_decimals(underlying_u0_token_address, 1),
+            user1_address,
+            0
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u0_token_address, user1_address
+            );
+
+        assert!(usage_as_collateral_enabled == true, TEST_SUCCESS);
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        // User 1 mint 100000000 U_1.
+        let mint_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 10000000);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_u1_amount as u64),
+            underlying_u1_token_address
+        );
+
+        // set debt ceiling for U_1
+        let ceilingAmount =
+            convert_to_currency_decimals(underlying_u1_token_address, 10000);
+        pool_configurator::set_debt_ceiling(
+            aave_pool,
+            underlying_u1_token_address,
+            ceilingAmount
+        );
+
+        // User 1 supply 1 U_1. Checks that U_1 is not activated as collateral.
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            convert_to_currency_decimals(underlying_u1_token_address, 1),
+            user1_address,
+            0
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+        assert!(usage_as_collateral_enabled == false, TEST_SUCCESS);
+
+        // set debt ceiling for U_1
+        let reserve_config_map =
+            pool::get_reserve_configuration(underlying_u1_token_address);
+        let ceilingAmount = 0;
+        reserve_config::set_debt_ceiling(&mut reserve_config_map, ceilingAmount);
+        pool::test_set_reserve_configuration(
+            underlying_u1_token_address, reserve_config_map
+        );
+
+        // User 1 tries to use U_1 as collateral
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, true
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+        assert!(usage_as_collateral_enabled == true, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41
+        )
+    ]
+    // test withdraw when amount equal to max u256 and asset disable collateral
+    fun test_withdraw_when_amount_equal_max_u256_and_asset_disable_collateral(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer
+    ) {
+        let user1_address = signer::address_of(user1);
+
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+
+        // mint 1 APT to the user1_address
+        let mint_apt_amount = 100000000;
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            user1_address, mint_apt_amount
+        );
+
+        // user 1 deposits
+        let supply_amount = 100;
+        // user 1 supplies U_1 tokens
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            supply_amount,
+            underlying_u1_token_address
+        );
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            (supply_amount as u256),
+            user1_address,
+            0
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+        assert!(usage_as_collateral_enabled == true, TEST_SUCCESS);
+
+        // disable collateral U_1 for user 1
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, false
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+        assert!(usage_as_collateral_enabled == false, TEST_SUCCESS);
+
+        // user 1 withdraws
+        supply_logic::withdraw(
+            user1,
+            underlying_u1_token_address,
+            math_utils::get_u256_max_for_testing(),
+            user1_address
+        );
+
+        // check user balance of U_1
+        let user_balance =
+            mock_underlying_token_factory::balance_of(
+                user1_address, underlying_u1_token_address
+            );
+        assert!(user_balance == supply_amount, TEST_SUCCESS);
+
+        // check underlying supply
+        let underlying_supply =
+            mock_underlying_token_factory::supply(underlying_u1_token_address);
+        assert!(underlying_supply == option::some(100), TEST_SUCCESS);
+
+        // check a_token balance of U_1
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
+        let a_token_balance = a_token_factory::balance_of(
+            user1_address, a_token_address
+        );
+        assert!(a_token_balance == 0, TEST_SUCCESS);
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+        assert!(usage_as_collateral_enabled == false, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41
+        )
+    ]
+    // test withdraw when amount equal to max u256 and burn all a_token
+    fun test_withdraw_when_amount_equal_max_u256_and_burn_all_a_token(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer
+    ) {
+        // create test accounts
+        let user1_address = signer::address_of(user1);
+
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        // mint 1 APT to the user1_address
+        let mint_apt_amount = 100000000;
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            user1_address, mint_apt_amount
+        );
+
+        // user 1 deposits
+        let supply_amount = 100;
+        // user 1 supplies U_1 tokens
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            supply_amount,
+            underlying_u1_token_address
+        );
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            (supply_amount as u256),
+            user1_address,
+            0
+        );
+
+        // user 1 withdraws
+        supply_logic::withdraw(
+            user1,
+            underlying_u1_token_address,
+            math_utils::get_u256_max_for_testing(),
+            user1_address
+        );
+
+        // check user balance of U_1
+        let user_balance =
+            mock_underlying_token_factory::balance_of(
+                user1_address, underlying_u1_token_address
+            );
+        assert!(user_balance == supply_amount, TEST_SUCCESS);
+
+        // check underlying supply
+        let underlying_supply =
+            mock_underlying_token_factory::supply(underlying_u1_token_address);
+        assert!(underlying_supply == option::some(100), TEST_SUCCESS);
+
+        // check a_token balance of U_1
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
+        let a_token_balance = a_token_factory::balance_of(
+            user1_address, a_token_address
+        );
+        assert!(a_token_balance == 0, TEST_SUCCESS);
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+        assert!(usage_as_collateral_enabled == false, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41
+        )
+    ]
+    fun test_set_user_use_reserve_as_collateral_when_disable_collateral_after_deposit(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer
+    ) {
+        let user1_address = signer::address_of(user1);
+
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        // User 1 mint 100000000 U_1.
+        let mint_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 10000000);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_u1_amount as u64),
+            underlying_u1_token_address
+        );
+
+        // User 1 supply 100 U_1. Checks that U_1 is not activated as collateral.
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            convert_to_currency_decimals(underlying_u1_token_address, 100),
+            user1_address,
+            0
+        );
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+        assert!(usage_as_collateral_enabled == true, TEST_SUCCESS);
+
+        // disable collateral for user 1
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, false
+        );
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+
+        assert!(usage_as_collateral_enabled == false, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41
+        )
+    ]
+    fun test_set_user_use_reserve_as_collateral_when_u1_enable_collateral_again(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer
+    ) {
+        let user1_address = signer::address_of(user1);
+
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        // User 1 mint 100000000 U_1.
+        let mint_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 10000000);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_u1_amount as u64),
+            underlying_u1_token_address
+        );
+
+        // User 1 supply 100 U_1. Checks that U_1 is not activated as collateral.
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            convert_to_currency_decimals(underlying_u1_token_address, 100),
+            user1_address,
+            0
+        );
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+        assert!(usage_as_collateral_enabled == true, TEST_SUCCESS);
+
+        // case1: enable collateral for user 1 again, use_as_collateral == is_collateral == true
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, true
+        );
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+
+        assert!(usage_as_collateral_enabled == true, TEST_SUCCESS);
+
+        // case2: disable collateral for user 1
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, false
+        );
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+
+        assert!(usage_as_collateral_enabled == false, TEST_SUCCESS);
+
+        // disable collateral for user 1 again, use_as_collateral == is_collateral == false
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, false
+        );
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+
+        assert!(usage_as_collateral_enabled == false, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41
+        )
+    ]
+    // Allow `validate_set_use_reserve_as_collateral` to succeed if:
+    // 1. collateral is currently enabled,
+    // 2. user balance is 0,
+    // 3. user wants to disable collateral.
+    // This handles rounding errors or logic failures that may leave stale collateral flags.
+    fun test_set_user_use_reserve_as_collateral_when_user_balance_is_zero_and_collateral_is_true(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer
+    ) {
+        let user1_address = signer::address_of(user1);
+
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_0"));
+        // User 1 mint 100000000 U_0.
+        let mint_u0_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 10000000);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_u0_amount as u64),
+            underlying_u1_token_address
+        );
+
+        // User 1 supply 1 U_0. Checks that U_0 is not activated as collateral.
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            convert_to_currency_decimals(underlying_u1_token_address, 1),
+            user1_address,
+            0
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+
+        assert!(usage_as_collateral_enabled == true, TEST_SUCCESS);
+
+        // set liquidity_index is 0
+        pool::set_reserve_liquidity_index_for_testing(underlying_u1_token_address, 0);
+        timestamp::fast_forward_seconds(100);
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, false
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u1_token_address, user1_address
+            );
+
+        assert!(usage_as_collateral_enabled == false, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aptos_std = @aptos_std,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            supply_user = @0x042
+        )
+    ]
+    /// User directly supplies an APT coin which is atomically wrapped into an FA and deposited
+    fun test_supply_coin(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aptos_std: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        supply_user: &signer
+    ) {
+        // init fa reserves with oracle and wrapped coins as a reserve
+        token_helper::init_reserves_with_oracle_and_wrapped_coins(
+            aave_pool,
+            aave_role_super_admin,
+            aptos_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
+        // set the supplier account to be test account
+        account::create_account_for_test(signer::address_of(supply_user));
+
+        // register the supplier as a coins receiver
+        coin::register<aptos_coin::AptosCoin>(supply_user);
+
+        // get the reserve config for it
+        let underlying_token_address =
+            coin_migrator::get_fa_address<aptos_coin::AptosCoin>();
+        let reserve_data = get_reserve_data(underlying_token_address);
+
+        // init user config for reserve index
+        create_user_config_for_reserve(
+            signer::address_of(supply_user),
+            (get_reserve_id(reserve_data) as u256),
+            option::some(false),
+            option::some(true)
+        );
+
+        // =============== MINT APT COINS TO USER ================= //
+        assert!(
+            coin::balance<aptos_coin::AptosCoin>(signer::address_of(supply_user)) == 0,
+            TEST_SUCCESS
+        );
+        let supplier_init_balance = 100;
+        let coins =
+            coin::withdraw<aptos_coin::AptosCoin>(aptos_std, supplier_init_balance);
+        coin::deposit(signer::address_of(supply_user), coins);
+        assert!(
+            coin::balance<aptos_coin::AptosCoin>(signer::address_of(supply_user))
+                == supplier_init_balance,
+            TEST_SUCCESS
+        );
+
+        // =============== USER SUPPLIES THE COIN DIRECTLY ================= //
+        // user supplies his coin token
+        let supply_receiver_address = signer::address_of(supply_user);
+        let supplied_amount: u64 = 10;
+        print(
+            &coin::balance<aptos_coin::AptosCoin>(signer::address_of(supply_user))
+        );
+        supply_logic::supply_coin<aptos_coin::AptosCoin>(
+            supply_user,
+            (supplied_amount as u256),
+            supply_receiver_address,
+            0
+        );
+
+        // check emitted events
+        let emitted_supply_events = emitted_events<supply_logic::Supply>();
+        assert!(vector::length(&emitted_supply_events) == 1, TEST_SUCCESS);
+
+        // > check supplier balance of coins
+        let supplier_end_balance =
+            coin::balance<aptos_coin::AptosCoin>(signer::address_of(supply_user));
+        assert!(
+            supplier_end_balance == supplier_init_balance - supplied_amount,
+            TEST_SUCCESS
+        );
+
+        // mint 1 APT to the supply_user
+        let mint_apt_amount = 100000000;
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            signer::address_of(supply_user), mint_apt_amount
+        );
+
+        // =============== USER WITHDRAWS ================= //
+        // user withdraws a small amount of the supplied amount
+        let amount_to_withdraw = 4;
+        supply_logic::withdraw(
+            supply_user,
+            underlying_token_address,
+            (amount_to_withdraw as u256),
+            supply_receiver_address
+        );
+
+        // check emitted events
+        let emitted_withdraw_events = emitted_events<supply_logic::Withdraw>();
+        assert!(vector::length(&emitted_withdraw_events) == 1, TEST_SUCCESS);
+        let emitted_reserve_collecteral_disabled_events =
+            emitted_events<events::ReserveUsedAsCollateralDisabled>();
+        assert!(
+            vector::length(&emitted_reserve_collecteral_disabled_events) == 0,
+            TEST_SUCCESS
+        );
     }
 }

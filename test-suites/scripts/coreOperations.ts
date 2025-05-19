@@ -28,24 +28,6 @@ import chalk from "chalk";
   // get all pool reserves
   const allReserveUnderlyingTokens = await poolClient.getAllReservesTokens();
 
-  // ==============================SET POOL RESERVES PARAMS===============================================
-  // NOTE: all other params come from the pool reserve configurations
-  for (const reserveUnderlyingToken of allReserveUnderlyingTokens) {
-    const underlyingSymbol = await underlyingTokensClient.symbol(reserveUnderlyingToken.tokenAddress);
-    // set reserve active
-    let txReceipt = await poolClient.setReserveActive(reserveUnderlyingToken.tokenAddress, true);
-    console.log(
-      chalk.yellow(`Activated pool reserve ${underlyingSymbol.toUpperCase()}.
-      Tx hash = ${txReceipt.hash}`),
-    );
-    // set reserve not in frozen state
-    txReceipt = await poolClient.setReserveFreeze(reserveUnderlyingToken.tokenAddress, false);
-    console.log(
-      chalk.yellow(`Set reserve ${underlyingSymbol.toUpperCase()} not in frozen state.
-      Tx hash = ${txReceipt.hash}`),
-    );
-  }
-
   try {
     // ==============================MINT UNDERLYINGS FOR A TEST USER ===============================================
     console.log(chalk.yellow("---------------------------------------------"));
@@ -144,7 +126,7 @@ import chalk from "chalk";
     }
     console.log(chalk.green("Withdrawing assets for test user finished successfully!"));
 
-    // ==============================USER REPAYS THE HE BORROWED FROM POOL USING THE SAME TOKENS ===============================================
+    // ==============================USER REPAYS WHAT HE BORROWED FROM POOL USING THE SAME TOKENS ===============================================
     console.log(chalk.yellow("---------------------------------------------"));
     console.log(chalk.cyan("Repaying assets..."));
     coreClient.setSigner(supplier);

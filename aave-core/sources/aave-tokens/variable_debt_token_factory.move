@@ -1,11 +1,15 @@
+/// @title Variable Debt Token Factory Module
+/// @author Aave
+/// @notice Factory for creating and managing variable debt tokens in the Aave protocol
+/// @dev Manages the creation, minting, burning, and operations of variable debt tokens
 module aave_pool::variable_debt_token_factory {
+    // imports
     use std::option;
+    use std::option::Option;
     use std::signer;
-    use std::string;
     use std::string::String;
     use aptos_std::smart_table;
     use aptos_std::smart_table::SmartTable;
-    use aptos_std::string_utils::format2;
     use aptos_framework::event;
     use aptos_framework::fungible_asset;
     use aptos_framework::fungible_asset::Metadata;
@@ -14,10 +18,13 @@ module aave_pool::variable_debt_token_factory {
 
     use aave_acl::acl_manage;
     use aave_config::error_config;
-
+    use aave_math::wad_ray_math;
+    use aave_pool::token_base::only_pool_admin;
+    use aave_pool::pool;
     use aave_pool::token_base;
 
-    friend aave_pool::pool;
+    // friend modules
+    friend aave_pool::pool_token_logic;
     friend aave_pool::borrow_logic;
     friend aave_pool::liquidation_logic;
 
@@ -29,58 +36,225 @@ module aave_pool::variable_debt_token_factory {
     #[test_only]
     friend aave_pool::pool_tests;
 
-    const DEBT_TOKEN_REVISION: u256 = 0x1;
+    // Error constants
 
+    // Global Constants
+
+    // Structs and Events
     #[event]
-    /// @dev Emitted when a debt token is initialized
+    /// @notice Emitted when a debt token is initialized
     /// @param underlying_asset The address of the underlying asset
+    /// @param incentives_controller The address of the incentives controller
     /// @param debt_token_decimals The decimals of the debt token
     /// @param debt_token_name The name of the debt token
     /// @param debt_token_symbol The symbol of the debt token
     struct Initialized has store, drop {
         underlying_asset: address,
+        incentives_controller: Option<address>,
         debt_token_decimals: u8,
         debt_token_name: String,
         debt_token_symbol: String
     }
 
-    struct TokenData has store, copy, drop {
+    /// @notice Data structure that stores token-specific information
+    /// @param underlying_asset The address of the underlying asset
+    struct TokenData has key, drop {
         underlying_asset: address
     }
 
-    // variable debt token metadata_address => TokenData
+    /// @notice Bi-directional mapping between underlying tokens and variable debt tokens
+    /// @dev See NOTES of `TokenMap` in `a_token_factory.move` for why this design is used
+    /// @param underlying_to_token Maps underlying token address to variable debt token address
+    /// @param token_to_underlying Maps variable debt token address to underlying token address
     struct TokenMap has key {
-        value: SmartTable<address, TokenData>,
-        count: u256
+        underlying_to_token: SmartTable<address, address>,
+        token_to_underlying: SmartTable<address, address>
     }
 
-    fun init_module(signer: &signer) {
-        token_base::only_token_admin(signer);
-        move_to(
-            signer,
-            TokenMap {
-                value: smart_table::new<address, TokenData>(),
-                count: 0
-            }
+    // Public view functions
+    #[view]
+    /// @notice Checks if the given address represents a variable debt token
+    /// @param metadata_address The address to check
+    /// @return True if the address is a variable debt token, false otherwise
+    public fun is_variable_debt_token(metadata_address: address): bool acquires TokenMap {
+        let token_map = borrow_global<TokenMap>(@aave_pool);
+        smart_table::contains(&token_map.token_to_underlying, metadata_address)
+            && object::object_exists<TokenData>(metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the address of the underlying asset of this debt token
+    /// @param metadata_address The address of the metadata object
+    /// @return The address of the underlying asset
+    public fun get_underlying_asset_address(
+        metadata_address: address
+    ): address acquires TokenData, TokenMap {
+        assert_token_exists(metadata_address);
+        let token_data = get_token_data(metadata_address);
+        token_data.underlying_asset
+    }
+
+    #[view]
+    /// @notice Returns last index interest was accrued to the user's balance
+    /// @param user The address of the user
+    /// @param metadata_address The address of the variable debt token
+    /// @return The last index interest was accrued to the user's balance, expressed in ray
+    public fun get_previous_index(
+        user: address, metadata_address: address
+    ): u256 acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::get_previous_index(user, metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the scaled balance of the user
+    /// @dev The scaled balance is the sum of all the updated stored balance divided by the reserve's liquidity index
+    /// at the moment of the update
+    /// @param owner The user whose balance is calculated
+    /// @param metadata_address The address of the variable debt token
+    /// @return The scaled balance of the user
+    public fun scaled_balance_of(
+        owner: address, metadata_address: address
+    ): u256 acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::scaled_balance_of(owner, metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the amount of tokens owned by the account
+    /// @param owner The address of the token owner
+    /// @param metadata_address The address of the variable debt token
+    /// @return The balance of tokens for the owner
+    public fun balance_of(owner: address, metadata_address: address): u256 acquires TokenData, TokenMap {
+        let current_scaled_balance = scaled_balance_of(owner, metadata_address);
+        if (current_scaled_balance == 0) {
+            return 0
+        };
+        let underlying_token_address = get_underlying_asset_address(metadata_address);
+
+        wad_ray_math::ray_mul(
+            current_scaled_balance,
+            pool::get_reserve_normalized_variable_debt(underlying_token_address)
         )
     }
 
-    fun assert_token_exists(metadata_address: address) acquires TokenMap {
-        let token_map = borrow_global<TokenMap>(@aave_pool);
-        assert!(
-            smart_table::contains(&token_map.value, metadata_address),
-            error_config::get_etoken_not_exist()
-        );
+    #[view]
+    /// @notice Returns the scaled total supply of the scaled balance token
+    /// @dev Represents sum(debt/index)
+    /// @param metadata_address The address of the variable debt token
+    /// @return The scaled total supply
+    public fun scaled_total_supply(metadata_address: address): u256 acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::scaled_total_supply(metadata_address)
     }
 
-    /// @notice Creates a new variable debt token.
-    /// @dev Only callable by the pool module
+    #[view]
+    /// @notice Returns the amount of tokens in existence
+    /// @param metadata_address The address of the variable debt token
+    /// @return The total supply of tokens
+    public fun total_supply(metadata_address: address): u256 acquires TokenData, TokenMap {
+        let current_supply_scaled = scaled_total_supply(metadata_address);
+        if (current_supply_scaled == 0) {
+            return 0
+        };
+
+        let underlying_token_address = get_underlying_asset_address(metadata_address);
+
+        wad_ray_math::ray_mul(
+            current_supply_scaled,
+            pool::get_reserve_normalized_variable_debt(underlying_token_address)
+        )
+    }
+
+    #[view]
+    /// @notice Returns the scaled balance of the user and the scaled total supply
+    /// @param owner The address of the user
+    /// @param metadata_address The address of the variable debt token
+    /// @return The scaled balance of the user
+    /// @return The scaled total supply
+    public fun get_scaled_user_balance_and_supply(
+        owner: address, metadata_address: address
+    ): (u256, u256) acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::get_scaled_user_balance_and_supply(owner, metadata_address)
+    }
+
+    #[view]
+    /// @notice Get the name of the fungible asset
+    /// @param metadata_address The address of the variable debt token
+    /// @return The name of the fungible asset
+    public fun name(metadata_address: address): String acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::name(metadata_address)
+    }
+
+    #[view]
+    /// @notice Get the symbol of the fungible asset
+    /// @param metadata_address The address of the variable debt token
+    /// @return The symbol of the fungible asset
+    public fun symbol(metadata_address: address): String acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::symbol(metadata_address)
+    }
+
+    #[view]
+    /// @notice Get the decimals of the fungible asset
+    /// @param metadata_address The address of the variable debt token
+    /// @return The number of decimals
+    public fun decimals(metadata_address: address): u8 acquires TokenMap {
+        assert_token_exists(metadata_address);
+        token_base::decimals(metadata_address)
+    }
+
+    #[view]
+    /// @notice Returns the address of a variable debt token by its symbol
+    /// @param symbol The symbol of the variable debt token to find
+    /// @return The address of the variable debt token
+    public fun token_address(symbol: String): address acquires TokenMap {
+        let token_map = borrow_global<TokenMap>(@aave_pool);
+
+        let address_found = option::none<address>();
+        smart_table::for_each_ref(
+            &token_map.token_to_underlying,
+            |metadata_address, _token_data| {
+                let token_metadata =
+                    object::address_to_object<Metadata>(*metadata_address);
+                let token_symbol = fungible_asset::symbol(token_metadata);
+                if (token_symbol == symbol) {
+                    assert!(
+                        std::option::is_none(&address_found),
+                        (error_config::get_etoken_already_exists())
+                    );
+                    std::option::fill(&mut address_found, *metadata_address);
+                };
+            }
+        );
+
+        assert!(
+            std::option::is_some(&address_found),
+            error_config::get_etoken_not_exist()
+        );
+        std::option::destroy_some(address_found)
+    }
+
+    #[view]
+    /// @notice Returns the metadata object of a variable debt token by its symbol
+    /// @param symbol The symbol of the variable debt token to find
+    /// @return The metadata object of the variable debt token
+    public fun asset_metadata(symbol: String): Object<Metadata> acquires TokenMap {
+        object::address_to_object<Metadata>(token_address(symbol))
+    }
+
+    // Friend functions
+    /// @notice Creates a new variable debt token
+    /// @dev Only callable by the pool_token_logic module
     /// @param signer The signer of the caller
     /// @param name The name of the variable debt token
     /// @param symbol The symbol of the variable debt token
     /// @param decimals The decimals of the variable debt token
     /// @param icon_uri The icon URI of the variable debt token
     /// @param project_uri The project URI of the variable debt token
+    /// @param incentives_controller The incentive controller address, if any
     /// @param underlying_asset The address of the underlying asset
     /// @return The address of the variable debt token
     public(friend) fun create_token(
@@ -90,46 +264,58 @@ module aave_pool::variable_debt_token_factory {
         decimals: u8,
         icon_uri: String,
         project_uri: String,
+        incentives_controller: Option<address>,
         underlying_asset: address
     ): address acquires TokenMap {
         only_asset_listing_or_pool_admins(signer);
+        let signer_addr = signer::address_of(signer);
 
-        let token_map = borrow_global_mut<TokenMap>(@aave_pool);
-        validate_unique_token(token_map, name, symbol);
-
-        let token_count = token_map.count + 1;
-        let seed = *string::bytes(&format2(&b"{}_{}", symbol, token_count));
-        let user_signer_addr = signer::address_of(signer);
-        let metadata_address = object::create_object_address(&user_signer_addr, seed);
-
-        assert!(
-            !smart_table::contains(&token_map.value, metadata_address),
-            error_config::get_etoken_already_exists()
-        );
-
-        let token_data = TokenData { underlying_asset };
-        smart_table::add(&mut token_map.value, metadata_address, token_data);
-
-        let constructor_ref = &object::create_named_object(signer, seed);
-        // create token
+        // create the object that represents this VariableDebtToken first
+        // check the NOTES in `a_token_factory::create_token` for why we adopt
+        // the `object::create_sticky_object` approach instead of the obvious
+        // alternative: `object::create_named_object`.
+        let constructor_ref = object::create_sticky_object(signer_addr);
         token_base::create_token(
-            constructor_ref,
+            &constructor_ref,
             name,
             symbol,
             decimals,
             icon_uri,
-            project_uri
+            project_uri,
+            incentives_controller
         );
 
+        // mark this object as a VariableDebtToken by storing a `TokenData` at
+        // the object address
+        let object_signer = object::generate_signer(&constructor_ref);
+        move_to(&object_signer, TokenData { underlying_asset });
+
+        // save to mapping
+        let metadata_address = object::address_from_constructor_ref(&constructor_ref);
+        let token_map = borrow_global_mut<TokenMap>(@aave_pool);
+        smart_table::add(
+            &mut token_map.underlying_to_token,
+            underlying_asset,
+            metadata_address
+        );
+        smart_table::add(
+            &mut token_map.token_to_underlying,
+            metadata_address,
+            underlying_asset
+        );
+
+        // emit event
         event::emit(
             Initialized {
                 underlying_asset,
+                incentives_controller,
                 debt_token_decimals: decimals,
                 debt_token_name: name,
                 debt_token_symbol: symbol
             }
         );
 
+        // return the token address
         metadata_address
     }
 
@@ -141,21 +327,39 @@ module aave_pool::variable_debt_token_factory {
     /// @param amount The amount of debt being minted
     /// @param index The variable debt index of the reserve
     /// @param metadata_address The address of the metadata object
+    /// @return whether this is the first time we mint the VariableDebt token to `on_behalf_of`
     public(friend) fun mint(
         caller: address,
         on_behalf_of: address,
         amount: u256,
         index: u256,
         metadata_address: address
-    ) acquires TokenMap {
+    ): bool acquires TokenMap {
         assert_token_exists(metadata_address);
-
+        assert!(
+            caller == on_behalf_of,
+            error_config::get_edifferent_caller_on_behalf_of()
+        );
         token_base::mint_scaled(
             caller,
             on_behalf_of,
             amount,
             index,
             metadata_address
+        )
+    }
+
+    /// @notice Sets an incentives controller for the variable debt token
+    /// @dev Only callable by the pool_token_logic module
+    /// @param admin The address of the admin calling the method
+    /// @param metadata_address The address of the variable debt token
+    /// @param incentives_controller The address of the incentives controller
+    public(friend) fun set_incentives_controller(
+        admin: &signer, metadata_address: address, incentives_controller: Option<address>
+    ) {
+        only_pool_admin(admin);
+        token_base::set_incentives_controller(
+            admin, metadata_address, incentives_controller
         );
     }
 
@@ -174,133 +378,60 @@ module aave_pool::variable_debt_token_factory {
         metadata_address: address
     ) acquires TokenMap {
         assert_token_exists(metadata_address);
-
         token_base::burn_scaled(from, @0x0, amount, index, metadata_address);
     }
 
-    public fun get_token_data(metadata_address: address): TokenData acquires TokenMap {
-        let token_map = borrow_global<TokenMap>(@aave_pool);
-        assert!(
-            smart_table::contains(&token_map.value, metadata_address),
-            error_config::get_etoken_not_exist()
-        );
-
-        *smart_table::borrow(&token_map.value, metadata_address)
-    }
-
-    #[view]
-    public fun get_revision(): u256 {
-        DEBT_TOKEN_REVISION
-    }
-
-    #[view]
-    /// @notice Returns the address of the underlying asset of this debtToken (E.g. WETH for variableDebtWETH)
-    /// @param metadata_address The address of the metadata object
-    /// @return The address of the underlying asset
-    public fun get_underlying_asset_address(metadata_address: address): address acquires TokenMap {
-        let token_data = get_token_data(metadata_address);
-        token_data.underlying_asset
-    }
-
-    #[view]
-    /// @notice Returns last index interest was accrued to the user's balance
-    /// @param user The address of the user
-    /// @param metadata_address The address of the variable debt token
-    /// @return The last index interest was accrued to the user's balance, expressed in ray
-    public fun get_previous_index(
-        user: address, metadata_address: address
-    ): u256 {
-        token_base::get_previous_index(user, metadata_address)
-    }
-
-    #[view]
-    /// @notice Returns the scaled balance of the user.
-    /// @dev The scaled balance is the sum of all the updated stored balance divided by the reserve's liquidity index
-    /// at the moment of the update
-    /// @param owner The user whose balance is calculated
-    /// @param metadata_address The address of the variable debt token
-    /// @return The scaled balance of the user
-    public fun scaled_balance_of(
-        owner: address, metadata_address: address
-    ): u256 {
-        token_base::scaled_balance_of(owner, metadata_address)
-    }
-
-    #[view]
-    /// @notice Returns the scaled total supply of the scaled balance token. Represents sum(debt/index)
-    /// @param metadata_address The address of the variable debt token
-    /// @return The scaled total supply
-    public fun scaled_total_supply(metadata_address: address): u256 {
-        token_base::scaled_total_supply(metadata_address)
-    }
-
-    #[view]
-    /// @notice Returns the scaled balance of the user and the scaled total supply.
-    /// @param owner The address of the user
-    /// @param metadata_address The address of the variable debt token
-    /// @return The scaled balance of the user
-    /// @return The scaled total supply
-    public fun get_scaled_user_balance_and_supply(
-        owner: address, metadata_address: address
-    ): (u256, u256) {
-        token_base::get_scaled_user_balance_and_supply(owner, metadata_address)
-    }
-
-    #[view]
-    /// Get the name of the fungible asset from the `metadata` object.
-    public fun name(metadata_address: address): String {
-        token_base::name(metadata_address)
-    }
-
-    #[view]
-    /// Get the symbol of the fungible asset from the `metadata` object.
-    public fun symbol(metadata_address: address): String {
-        token_base::symbol(metadata_address)
-    }
-
-    #[view]
-    /// Get the decimals from the `metadata` object.
-    public fun decimals(metadata_address: address): u8 {
-        token_base::decimals(metadata_address)
-    }
-
-    /// @notice Validates that the variable debt token name and symbol are unique
-    /// @param token_map The variable debt token token map
-    /// @param name The name of the variable debt token
-    /// @param symbol The symbol of the variable debt token
-    fun validate_unique_token(
-        token_map: &TokenMap, name: String, symbol: String
-    ) {
-        smart_table::for_each_ref(
-            &token_map.value,
-            |metadata_address, _token_data| {
-                let asset_name = name(*metadata_address);
-                let asset_symbol = symbol(*metadata_address);
-                assert!(
-                    asset_name != name, error_config::get_etoken_name_already_exist()
-                );
-                assert!(
-                    asset_symbol != symbol,
-                    error_config::get_etoken_symbol_already_exist()
-                );
-            }
-        );
-    }
-
     /// @notice Drops the variable debt token associated data
-    /// @dev Only callable by the pool module
+    /// @dev Only callable by the pool_token_logic module
     /// @param metadata_address The address of the metadata object
-    public(friend) fun drop_token(metadata_address: address) acquires TokenMap {
+    public(friend) fun drop_token(metadata_address: address) acquires TokenMap, TokenData {
         assert_token_exists(metadata_address);
 
-        // Remove metadata_address from variable debt token map
+        // remove metadata_address from variable debt token map
         let token_map = borrow_global_mut<TokenMap>(@aave_pool);
-        smart_table::remove(&mut token_map.value, metadata_address);
+        let underlying_asset =
+            smart_table::remove(&mut token_map.token_to_underlying, metadata_address);
+        smart_table::remove(&mut token_map.underlying_to_token, underlying_asset);
 
-        // Remove metadata_address from token_base module's token map
+        // remove metadata_address from token_base module's token map
         token_base::drop_token(metadata_address);
+
+        // finally remove the token data at the metadata address
+        move_from<TokenData>(metadata_address);
     }
 
+    // Private functions
+    /// @notice Initializes the module with a token map
+    /// @param signer The signer of the token admin account
+    fun init_module(signer: &signer) {
+        token_base::only_token_admin(signer);
+        move_to(
+            signer,
+            TokenMap {
+                underlying_to_token: smart_table::new(),
+                token_to_underlying: smart_table::new()
+            }
+        )
+    }
+
+    /// @notice Asserts that the token exists
+    /// @param metadata_address The address of the token to check
+    fun assert_token_exists(metadata_address: address) acquires TokenMap {
+        assert!(
+            is_variable_debt_token(metadata_address),
+            error_config::get_etoken_not_exist()
+        );
+    }
+
+    /// @notice Retrieves the token data for a specific variable debt token
+    /// @param metadata_address The address of the variable debt token
+    /// @return Reference to the token data
+    inline fun get_token_data(metadata_address: address): &TokenData {
+        borrow_global<TokenData>(metadata_address)
+    }
+
+    /// @notice Checks if the caller is an asset listing admin or pool admin
+    /// @param account The account to check
     fun only_asset_listing_or_pool_admins(account: &signer) {
         let account_address = signer::address_of(account);
         assert!(
@@ -310,41 +441,41 @@ module aave_pool::variable_debt_token_factory {
         )
     }
 
-    #[view]
-    public fun token_address(owner: address, symbol: String): address acquires TokenMap {
-        let token_map = borrow_global<TokenMap>(@aave_pool);
-
-        let address_found = option::none<address>();
-        smart_table::for_each_ref(
-            &token_map.value,
-            |metadata_address, _token_data| {
-                let token_metadata =
-                    object::address_to_object<Metadata>(*metadata_address);
-                if (object::owner(token_metadata) == owner) {
-                    let token_symbol = fungible_asset::symbol(token_metadata);
-                    if (token_symbol == symbol) {
-                        if (std::option::is_some(&address_found)) {
-                            abort(error_config::get_etoken_already_exists())
-                        };
-                        std::option::fill(&mut address_found, *metadata_address);
-                    };
-                }
-            }
-        );
-
-        if (std::option::is_none(&address_found)) {
-            abort(error_config::get_etoken_not_exist())
-        };
-        std::option::destroy_some(address_found)
-    }
-
-    #[view]
-    public fun asset_metadata(owner: address, symbol: String): Object<Metadata> acquires TokenMap {
-        object::address_to_object<Metadata>(token_address(owner, symbol))
+    #[test_only]
+    /// @notice Initialize the module for testing
+    /// @param signer The signer of the token admin account
+    public fun test_init_module(signer: &signer) {
+        init_module(signer);
     }
 
     #[test_only]
-    public fun test_init_module(signer: &signer) {
-        init_module(signer);
+    /// @notice Mint tokens for testing
+    /// @param caller The address performing the mint
+    /// @param on_behalf_of The address of the user that will receive the minted tokens
+    /// @param amount The amount of tokens getting minted
+    /// @param index The variable debt index of the reserve
+    /// @param metadata_address The address of the variable debt token
+    /// @return whether this is the first time we mint tokens to `on_behalf_of`
+    public fun test_mint_for_testing(
+        caller: address,
+        on_behalf_of: address,
+        amount: u256,
+        index: u256,
+        metadata_address: address
+    ): bool acquires TokenMap {
+        mint(
+            caller,
+            on_behalf_of,
+            amount,
+            index,
+            metadata_address
+        )
+    }
+
+    #[test_only]
+    /// @notice Assert token exists for testing
+    /// @param metadata_address The address of the variable debt token to check
+    public fun assert_token_exists_for_testing(metadata_address: address) acquires TokenMap {
+        assert_token_exists(metadata_address);
     }
 }

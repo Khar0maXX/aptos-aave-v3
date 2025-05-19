@@ -6,7 +6,7 @@ import { AptosProvider } from "../wrappers/aptosProvider";
 // Resources Admin Account
 
 // Underlying Token
-const aptosProvider = AptosProvider.fromEnvs();
+export const aptosProvider = AptosProvider.fromEnvs();
 
 export const AaveTokensManager = Account.fromPrivateKey({
   privateKey: aptosProvider.getProfileAccountPrivateKeyByName("aave_pool"),
@@ -14,7 +14,7 @@ export const AaveTokensManager = Account.fromPrivateKey({
 export const AaveTokensManagerAccountAddress = AaveTokensManager.accountAddress.toString();
 
 export const UnderlyingManager = Account.fromPrivateKey({
-  privateKey: aptosProvider.getProfileAccountPrivateKeyByName("underlying_tokens"),
+  privateKey: aptosProvider.getProfileAccountPrivateKeyByName("aave_mock_underlyings"),
 });
 export const UnderlyingManagerAccountAddress = UnderlyingManager.accountAddress.toString();
 
@@ -32,17 +32,17 @@ export const VariableManagerAccountAddress = VariableManager.accountAddress.toSt
 
 // Resource Func Addr
 // Underlying Token
-export const UnderlyingCreateTokenFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::create_token`;
-export const UnderlyingGetMetadataBySymbolFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::get_metadata_by_symbol`;
-export const UnderlyingGetTokenAccountAddressFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::get_token_account_address`;
-export const UnderlyingMintFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::mint`;
-export const UnderlyingSupplyFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::supply`;
-export const UnderlyingMaximumFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::maximum`;
-export const UnderlyingNameFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::name`;
-export const UnderlyingSymbolFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::symbol`;
-export const UnderlyingDecimalsFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::decimals`;
-export const UnderlyingBalanceOfFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::balance_of`;
-export const UnderlyingTokenAddressFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::mock_underlying_token_factory::token_address`;
+export const UnderlyingCreateTokenFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::create_token`;
+export const UnderlyingGetMetadataBySymbolFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::get_metadata_by_symbol`;
+export const UnderlyingGetTokenAccountAddressFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::get_token_account_address`;
+export const UnderlyingMintFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::mint`;
+export const UnderlyingSupplyFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::supply`;
+export const UnderlyingMaximumFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::maximum`;
+export const UnderlyingNameFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::name`;
+export const UnderlyingSymbolFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::symbol`;
+export const UnderlyingDecimalsFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::decimals`;
+export const UnderlyingBalanceOfFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::balance_of`;
+export const UnderlyingTokenAddressFuncAddr: MoveFunctionId = `${UnderlyingManagerAccountAddress}::mock_underlying_token_factory::token_address`;
 
 // A Token
 export const ATokenCreateTokenFuncAddr: MoveFunctionId = `${AaveTokensManagerAccountAddress}::a_token_factory::create_token`;
@@ -82,18 +82,24 @@ export const DAI = "DAI";
 export const WETH = "WETH";
 export const USDC = "USDC";
 export const AAVE = "AAVE";
+export const LINK = "LINK";
+export const WBTC = "WBTC";
 
 // A Tokens
 export const ADAI = "ADAI";
 export const AWETH = "AWETH";
 export const AUSDC = "AUSDC";
 export const AAAVE = "AAAVE";
+export const ALINK = "ALINK";
+export const AWBTC = "AWBTC";
 
 // Variable Tokens
 export const VDAI = "VDAI";
 export const VWETH = "VWETH";
 export const VUSDC = "VUSDC";
 export const VAAVE = "VAAVE";
+export const VLINK = "VLINK";
+export const VWBTC = "VWBTC";
 
 // Common Function
 interface Metadata {

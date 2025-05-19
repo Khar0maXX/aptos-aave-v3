@@ -12,6 +12,7 @@ export const OracleManagerAccountAddress = OracleManager.accountAddress.toString
 export const GetAssetPriceFuncAddr: MoveFunctionId = `${OracleManagerAccountAddress}::oracle::get_asset_price`;
 export const GetAssetsPricesFuncAddr: MoveFunctionId = `${OracleManagerAccountAddress}::oracle::get_assets_prices`;
 export const SetAssetFeedIdFuncAddr: MoveFunctionId = `${OracleManagerAccountAddress}::oracle::set_asset_feed_id`;
+export const SetAssetCustomPrice: MoveFunctionId = `${OracleManagerAccountAddress}::oracle::set_asset_custom_price`;
 export const BatchSetAssetFeedIdsFuncAddr: MoveFunctionId = `${OracleManagerAccountAddress}::oracle::batch_set_asset_feed_ids`;
 export const RemoveAssetFeedIdFuncAddr: MoveFunctionId = `${OracleManagerAccountAddress}::oracle::remove_asset_feed_id`;
 export const RemoveAssetFeedIdsFuncAddr: MoveFunctionId = `${OracleManagerAccountAddress}::oracle::batch_remove_asset_feed_ids`;

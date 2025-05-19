@@ -1,35 +1,26 @@
 #[test_only]
 module aave_pool::borrow_logic_tests {
-    use std::features::change_feature_flags_for_testing;
-    use std::option::Self;
     use std::signer;
-    use std::string::{utf8, String};
+    use std::string::{utf8};
     use std::vector;
-    use aptos_std::string_utils;
-    use aptos_framework::account;
     use aptos_framework::event::emitted_events;
-    use aptos_framework::timestamp::{set_time_has_started_for_testing};
-    use aave_acl::acl_manage::Self;
+    use aptos_framework::timestamp;
     use aave_config::reserve_config;
-    use aave_config::user_config::is_using_as_collateral_or_borrowing;
-    use aave_math::wad_ray_math;
-    use aave_rate::default_reserve_interest_rate_strategy::Self;
-    use aave_rate::interest_rate_strategy;
+    use aave_math::math_utils;
+    use aave_pool::default_reserve_interest_rate_strategy;
+    use aave_pool::fungible_asset_manager;
+    use aave_pool::variable_debt_token_factory;
+    use aave_pool::pool_token_logic;
+    use aave_pool::token_helper::{convert_to_currency_decimals, init_reserves_with_oracle};
+    use aave_pool::pool;
+    use aave_pool::token_helper;
     use aave_pool::a_token_factory::Self;
     use aave_pool::borrow_logic::Self;
-    use aave_pool::collector;
-    use aave_pool::mock_underlying_token_factory::Self;
-    use aave_pool::pool::{
-        get_reserve_data,
-        get_reserve_id,
-        get_reserve_liquidity_index,
-        get_user_configuration,
-        test_set_reserve_configuration
-    };
+    use aave_mock_underlyings::mock_underlying_token_factory::Self;
+    use aave_pool::events::IsolationModeTotalDebtUpdated;
+    use aave_pool::pool_data_provider;
     use aave_pool::pool_configurator;
     use aave_pool::supply_logic::Self;
-    use aave_pool::token_base::Self;
-    use aave_pool::variable_debt_token_factory;
 
     const TEST_SUCCESS: u64 = 1;
     const TEST_FAILED: u64 = 2;
@@ -37,14 +28,13 @@ module aave_pool::borrow_logic_tests {
     #[
         test(
             aave_pool = @aave_pool,
-            aave_rate = @aave_rate,
             aave_role_super_admin = @aave_acl,
-            aave_oracle = @aave_oracle,
-            publisher = @data_feeds,
-            platform = @platform,
             aptos_std = @aptos_std,
-            supply_user = @0x042,
-            underlying_tokens_admin = @underlying_tokens
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            supply_user = @0x042
         )
     ]
     /// Reserve allows borrowing and being used as collateral.
@@ -52,271 +42,1454 @@ module aave_pool::borrow_logic_tests {
     /// User supplies and withdraws parts of the supplied amount
     fun test_supply_borrow(
         aave_pool: &signer,
-        aave_rate: &signer,
         aave_role_super_admin: &signer,
-        aave_oracle: &signer,
-        publisher: &signer,
-        platform: &signer,
         aptos_std: &signer,
-        supply_user: &signer,
-        underlying_tokens_admin: &signer
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        supply_user: &signer
     ) {
-        // start the timer
-        set_time_has_started_for_testing(aptos_std);
-
-        // add the test events feature flag
-        change_feature_flags_for_testing(aptos_std, vector[26], vector[]);
-
-        // create test accounts
-        account::create_account_for_test(signer::address_of(aave_pool));
-
-        // init the acl module and make aave_pool the asset listing/pool admin
-        acl_manage::test_init_module(aave_role_super_admin);
-        acl_manage::add_asset_listing_admin(aave_role_super_admin, @aave_pool);
-        acl_manage::add_pool_admin(aave_role_super_admin, @aave_pool);
-        acl_manage::add_risk_admin(
-            aave_role_super_admin, signer::address_of(aave_oracle)
-        );
-
-        // init collector
-        collector::init_module_test(aave_pool);
-        let collector_address = collector::collector_address();
-
-        // init token base (a tokens and var tokens)
-        token_base::test_init_module(aave_pool);
-
-        // init a token factory
-        a_token_factory::test_init_module(aave_pool);
-
-        // init debt token factory
-        variable_debt_token_factory::test_init_module(aave_pool);
-
-        // init underlying tokens
-        mock_underlying_token_factory::test_init_module(aave_pool);
-
-        // init the oracle module
-        aave_oracle::oracle_tests::config_oracle(aave_oracle, publisher, platform);
-
-        // init pool_configurator & reserves module
-        pool_configurator::test_init_module(aave_pool);
-
-        // init rate
-        interest_rate_strategy::test_init_module(aave_rate);
-
-        // init input data for creating pool reserves
-        let treasuries: vector<address> = vector[];
-
-        // prepare pool reserves
-        let underlying_assets: vector<address> = vector[];
-        let underlying_assets_symbols: vector<String> = vector[];
-        let underlying_asset_decimals: vector<u8> = vector[];
-        let atokens_names: vector<String> = vector[];
-        let atokens_symbols: vector<String> = vector[];
-        let var_tokens_names: vector<String> = vector[];
-        let var_tokens_symbols: vector<String> = vector[];
-        let num_assets = 3;
-        for (i in 0..num_assets) {
-            let name = string_utils::format1(&b"APTOS_UNDERLYING_{}", i);
-            let symbol = string_utils::format1(&b"U_{}", i);
-            let decimals = 2 + i;
-            let max_supply = 10000;
-            mock_underlying_token_factory::create_token(
-                underlying_tokens_admin,
-                max_supply,
-                name,
-                symbol,
-                decimals,
-                utf8(b""),
-                utf8(b"")
-            );
-
-            let underlying_token_address =
-                mock_underlying_token_factory::token_address(symbol);
-
-            // init the default interest rate strategy for the underlying_token_address
-            let optimal_usage_ratio: u256 = wad_ray_math::get_half_ray_for_testing();
-            let base_variable_borrow_rate: u256 = 0;
-            let variable_rate_slope1: u256 = 0;
-            let variable_rate_slope2: u256 = 0;
-            default_reserve_interest_rate_strategy::set_reserve_interest_rate_strategy(
-                aave_pool,
-                underlying_token_address,
-                optimal_usage_ratio,
-                base_variable_borrow_rate,
-                variable_rate_slope1,
-                variable_rate_slope2
-            );
-
-            // prepare the data for reserve's atokens and variable tokens
-            vector::push_back(&mut underlying_assets_symbols, symbol);
-            vector::push_back(&mut underlying_assets, underlying_token_address);
-            vector::push_back(&mut underlying_asset_decimals, decimals);
-            vector::push_back(&mut treasuries, collector_address);
-            vector::push_back(
-                &mut atokens_names, string_utils::format1(&b"APTOS_A_TOKEN_{}", i)
-            );
-            vector::push_back(&mut atokens_symbols, string_utils::format1(&b"A_{}", i));
-            vector::push_back(
-                &mut var_tokens_names, string_utils::format1(&b"APTOS_VAR_TOKEN_{}", i)
-            );
-            vector::push_back(
-                &mut var_tokens_symbols, string_utils::format1(&b"V_{}", i)
-            );
-        };
-
-        // create pool reserves
-        pool_configurator::init_reserves(
+        let supply_user_address = signer::address_of(supply_user);
+        init_reserves_with_oracle(
             aave_pool,
-            underlying_assets,
-            treasuries,
-            atokens_names,
-            atokens_symbols,
-            var_tokens_names,
-            var_tokens_symbols
+            aave_role_super_admin,
+            aptos_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
         );
 
-        // create reserve configurations
-        for (j in 0..num_assets) {
-            let reserve_config_new = reserve_config::init();
-            let decimals = (
-                *vector::borrow(&underlying_asset_decimals, (j as u64)) as u256
-            );
-            reserve_config::set_decimals(&mut reserve_config_new, decimals);
-            reserve_config::set_active(&mut reserve_config_new, true);
-            reserve_config::set_frozen(&mut reserve_config_new, false);
-            reserve_config::set_paused(&mut reserve_config_new, false);
-            reserve_config::set_ltv(&mut reserve_config_new, 5000); // NOTE: set ltv
-            reserve_config::set_debt_ceiling(&mut reserve_config_new, 0); // NOTE: set no debt_ceiling
-            reserve_config::set_borrowable_in_isolation(&mut reserve_config_new, false); // NOTE: no borrowing in isolation
-            reserve_config::set_siloed_borrowing(&mut reserve_config_new, false); // NOTE: no siloed borrowing
-            reserve_config::set_flash_loan_enabled(&mut reserve_config_new, false); // NOTE: no flashloans
-            reserve_config::set_borrowing_enabled(&mut reserve_config_new, true); // NOTE: enable borrowing
-            reserve_config::set_liquidation_threshold(&mut reserve_config_new, 4000); // NOTE: enable liq. threshold
-            test_set_reserve_configuration(
-                *vector::borrow(&underlying_assets, (j as u64)), reserve_config_new
-            );
-        };
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
 
-        // =============== MINT UNDERLYING FOR USER & USER SUPPLIES ================= //
-        // mint 100 underlying tokens for the user
-        let mint_amount = 100;
-        let supplied_amount: u64 = 10;
-        let supply_receiver_address = signer::address_of(supply_user);
-        let mint_receiver_address = signer::address_of(supply_user);
-        for (i in 0..vector::length(&underlying_assets)) {
-            let underlying_token_address = *vector::borrow(&underlying_assets, i);
+        // user1 mint 1000 U_1
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            supply_user_address,
+            (convert_to_currency_decimals(underlying_u1_token_address, 1000) as u64),
+            underlying_u1_token_address
+        );
 
-            // mint tokens for the user
-            mock_underlying_token_factory::mint(
-                underlying_tokens_admin,
-                mint_receiver_address,
-                mint_amount,
-                underlying_token_address
-            );
-            let initial_user_balance =
-                mock_underlying_token_factory::balance_of(
-                    mint_receiver_address, underlying_token_address
-                );
-            // assert user balance of underlying
-            assert!(initial_user_balance == mint_amount, TEST_SUCCESS);
-            // assert underlying supply
-            assert!(
-                mock_underlying_token_factory::supply(underlying_token_address)
-                    == option::some((mint_amount as u128)),
-                TEST_SUCCESS
-            );
+        // mint 10 APT to the supply_user_address
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            supply_user_address, 1_000_000_000
+        );
 
-            // init user config for reserve index
-            let reserve_data = get_reserve_data(underlying_token_address);
+        // set asset price for U_1 token
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u1_token_address,
+            100
+        );
 
-            // let user supply
-            supply_logic::supply(
-                supply_user,
-                underlying_token_address,
-                (supplied_amount as u256),
-                supply_receiver_address,
-                0
-            );
+        // user1 deposit 1000 U_1 to the pool
+        let supply_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 1000);
+        supply_logic::supply(
+            supply_user,
+            underlying_u1_token_address,
+            supply_u1_amount,
+            supply_user_address,
+            0
+        );
 
-            let user_config_map = get_user_configuration(signer::address_of(supply_user));
-            assert!(
-                is_using_as_collateral_or_borrowing(
-                    &user_config_map, (get_reserve_id(&reserve_data) as u256)
-                ),
-                TEST_SUCCESS
-            );
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
+        let user1_balance =
+            a_token_factory::balance_of(supply_user_address, a_token_address);
+        assert!(user1_balance == supply_u1_amount, TEST_SUCCESS);
 
-            // check supplier balance of underlying
-            let supplier_balance =
-                mock_underlying_token_factory::balance_of(
-                    mint_receiver_address, underlying_token_address
-                );
-            assert!(
-                supplier_balance == initial_user_balance - supplied_amount,
-                TEST_SUCCESS
-            );
+        // set global time
+        timestamp::update_global_time_for_test_secs(1000);
 
-            // check underlying supply (must not have changed)
-            assert!(
-                mock_underlying_token_factory::supply(underlying_token_address)
-                    == option::some((mint_amount as u128)),
-                TEST_SUCCESS
-            );
-
-            // check a_token underlying balance
-            let a_token_address =
-                a_token_factory::token_address(
-                    signer::address_of(aave_pool),
-                    *vector::borrow(&atokens_symbols, i)
-                );
-            let atoken_account_address =
-                a_token_factory::get_token_account_address(a_token_address);
-            let underlying_account_balance =
-                mock_underlying_token_factory::balance_of(
-                    atoken_account_address, underlying_token_address
-                );
-            assert!(underlying_account_balance == supplied_amount, TEST_SUCCESS);
-            // check user a_token balance after supply
-            let supplied_amount_scaled =
-                wad_ray_math::ray_div(
-                    (supplied_amount as u256),
-                    (get_reserve_liquidity_index(&reserve_data) as u256)
-                );
-            let supplier_a_token_balance =
-                a_token_factory::scaled_balance_of(
-                    signer::address_of(supply_user), a_token_address
-                );
-            assert!(supplier_a_token_balance == supplied_amount_scaled, TEST_SUCCESS);
-        };
-
-        // register assets with oracle feed_ids
-        for (i in 0..vector::length(&underlying_assets)) {
-            let underlying_token_address = *vector::borrow(&underlying_assets, i);
-            aave_oracle::oracle::set_asset_feed_id(
-                aave_pool,
-                underlying_token_address,
-                aave_oracle::oracle_tests::get_test_feed_id()
-            );
-        };
-
-        // =============== USER BORROWS FIRST TWO ASSETS ================= //
-        // user supplies the underlying token
-        let borrow_receiver_address = signer::address_of(supply_user);
-        let borrowed_amount: u64 = 1;
-        for (i in 0..2) {
-            let underlying_token_address = *vector::borrow(&underlying_assets, i);
-            borrow_logic::borrow(
-                supply_user,
-                underlying_token_address,
-                (borrowed_amount as u256),
-                2, // variable interest rate mode
-                0, // referral
-                borrow_receiver_address
-            );
-        };
+        // user1 borrow 100 U_1
+        let borrow_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 100);
+        borrow_logic::borrow(
+            supply_user,
+            underlying_u1_token_address,
+            borrow_u1_amount,
+            2,
+            0,
+            supply_user_address
+        );
 
         // check emitted events
         let emitted_borrow_events = emitted_events<borrow_logic::Borrow>();
-        assert!(vector::length(&emitted_borrow_events) == 2, TEST_SUCCESS);
+        assert!(vector::length(&emitted_borrow_events) == 1, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41,
+            user2 = @0x42
+        )
+    ]
+    // User 1 supply 1000 U_1
+    // User 2 supply 2000 U_2
+    // Configures isolated assets U_2.
+    // User 2 borrows 10 U_1. Check debt ceiling
+    fun test_borrow_with_isolation_mode(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer,
+        user2: &signer
+    ) {
+        let user1_address = signer::address_of(user1);
+        let user2_address = signer::address_of(user2);
+
+        init_reserves_with_oracle(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        let underlying_u2_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_2"));
+
+        // mint 10000000 U_1 to user 1
+        let mint_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 10000000);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_u1_amount as u64),
+            underlying_u1_token_address
+        );
+
+        // set asset price for U_1
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u1_token_address,
+            10
+        );
+
+        // supply 1000 U_1 to user 1
+        let supply_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 1000);
+        aave_pool::supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            supply_u1_amount,
+            user1_address,
+            0
+        );
+
+        // mint 10000000 U_2 to user 2
+        let mint_u2_amount =
+            convert_to_currency_decimals(underlying_u2_token_address, 10000000);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user2_address,
+            (mint_u2_amount as u64),
+            underlying_u2_token_address
+        );
+
+        // set asset price for U_2
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u2_token_address,
+            10
+        );
+
+        // set debt ceiling
+        pool_configurator::set_debt_ceiling(
+            aave_pool, underlying_u2_token_address, 10000
+        );
+
+        // supply 2000 U_2 to user 2
+        let supply_u2_amount =
+            convert_to_currency_decimals(underlying_u2_token_address, 2000);
+        aave_pool::supply_logic::supply(
+            user2,
+            underlying_u2_token_address,
+            supply_u2_amount,
+            user2_address,
+            0
+        );
+        // Enables collateral
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_u2_token_address, true
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u2_token_address, user2_address
+            );
+        assert!(usage_as_collateral_enabled == true, TEST_SUCCESS);
+
+        // set global time
+        timestamp::update_global_time_for_test_secs(1000);
+
+        // set borrowable in isolation
+        pool_configurator::set_borrowable_in_isolation(
+            aave_pool, underlying_u1_token_address, true
+        );
+
+        // User 2 borrow 10 U_1 to user 2
+        let borrow_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 10);
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            borrow_u1_amount,
+            2,
+            0,
+            user2_address
+        );
+
+        // check isolation mode total debt emitted events
+        let emitted_events = emitted_events<IsolationModeTotalDebtUpdated>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
+
+        // check borrow event
+        let emitted_events = emitted_events<borrow_logic::Borrow>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
+
+        let reserve_data = pool::get_reserve_data(underlying_u2_token_address);
+        let isolation_mode_total_debt =
+            pool::get_reserve_isolation_mode_total_debt(reserve_data);
+
+        assert!(isolation_mode_total_debt == 1000, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aptos_std = @aptos_std,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x041,
+            user2 = @0x042
+        )
+    ]
+    // User 1 deposits 1000 U_1
+    // User 2 deposits 1000 U_2
+    // User 2 borrows 1 U_1
+    // User 2 borrows 1 U_1 again
+    // User 2 borrows 1 U_1 again
+    // User 2 borrows 1 U_1 again
+    // See if there is any arbitrage possibility
+    fun test_borrow_with_multiple_borrow(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aptos_std: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer,
+        user2: &signer
+    ) {
+        init_reserves_with_oracle(
+            aave_pool,
+            aave_role_super_admin,
+            aptos_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
+
+        let user1_address = signer::address_of(user1);
+        let user2_address = signer::address_of(user2);
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        // mint 1000 U_1 for user 1
+        let mint_amount = convert_to_currency_decimals(
+            underlying_u1_token_address, 1000
+        );
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_amount as u64),
+            underlying_u1_token_address
+        );
+        // user 1 supplies 100 U_1
+        let supply_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 1000);
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            supply_amount,
+            user1_address,
+            0
+        );
+
+        // set asset price for U_1
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u1_token_address,
+            100
+        );
+
+        // mint 1000 U_2 for user 2
+        let underlying_u2_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_2"));
+        let mint_amount = convert_to_currency_decimals(
+            underlying_u2_token_address, 1000
+        );
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user2_address,
+            (mint_amount as u64),
+            underlying_u2_token_address
+        );
+        // user 2 supplies 1000 U_2
+        let supply_amount =
+            convert_to_currency_decimals(underlying_u2_token_address, 1000);
+        supply_logic::supply(
+            user2,
+            underlying_u2_token_address,
+            supply_amount,
+            user2_address,
+            0
+        );
+
+        // set asset price for U_2
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u2_token_address,
+            100
+        );
+
+        // set global time
+        timestamp::fast_forward_seconds(1000);
+
+        let borrow_amount = convert_to_currency_decimals(underlying_u1_token_address, 1);
+        // set variable borrow index is 1.5 ray
+        let variable_borrow_index = 15 * math_utils::pow(10, 26);
+        pool::set_reserve_variable_borrow_index_for_testing(
+            underlying_u1_token_address,
+            (variable_borrow_index as u128)
+        );
+
+        // user 2 first borrows 1 U_1
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            borrow_amount,
+            2, // variable interest rate mode
+            0, // referral
+            user2_address
+        );
+
+        // user 2 second borrows 1 U_1
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            borrow_amount,
+            2, // variable interest rate mode
+            0, // referral
+            user2_address
+        );
+
+        // user 2 third borrows 1 U_1
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            borrow_amount,
+            2, // variable interest rate mode
+            0, // referral
+            user2_address
+        );
+
+        // user 2 fourth borrows 1 U_1
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            borrow_amount,
+            2, // variable interest rate mode
+            0, // referral
+            user2_address
+        );
+
+        // repay all debt
+        let repay_amount = borrow_amount * 4;
+        // check total debt before repay
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
+        let variable_debt_token_address =
+            pool::get_reserve_variable_debt_token_address(reserve_data);
+        let total_debt =
+            variable_debt_token_factory::balance_of(
+                user2_address, variable_debt_token_address
+            );
+        assert!(total_debt > repay_amount, TEST_SUCCESS);
+
+        borrow_logic::repay(
+            user2,
+            underlying_u1_token_address,
+            repay_amount,
+            2, // variable interest rate mode
+            user2_address
+        );
+
+        // check total debt after repay
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
+        let variable_debt_token_address =
+            pool::get_reserve_variable_debt_token_address(reserve_data);
+        let total_debt =
+            variable_debt_token_factory::balance_of(
+                user2_address, variable_debt_token_address
+            );
+        assert!(total_debt > 0, TEST_SUCCESS); // There is still debt to be repaid, No arbitrage possible
+
+        // check emitted events
+        let emitted_borrow_events = emitted_events<borrow_logic::Borrow>();
+        assert!(vector::length(&emitted_borrow_events) == 4, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x41,
+            user2 = @0x42
+        )
+    ]
+    // User 1 supply 1000 U_1
+    // User 2 supplies U_2 and borrows U_1 in isolation, U_2 exits isolation.
+    // User 2 repay. U_2 enters isolation again
+    fun test_repay_with_isolation_mode(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer,
+        user2: &signer
+    ) {
+        let user1_address = signer::address_of(user1);
+        let user2_address = signer::address_of(user2);
+
+        init_reserves_with_oracle(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        let underlying_u2_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_2"));
+        // set borrowable in isolation for U_1
+        pool_configurator::set_borrowable_in_isolation(
+            aave_pool, underlying_u1_token_address, true
+        );
+
+        // set debt ceiling for U_2
+        pool_configurator::set_debt_ceiling(
+            aave_pool, underlying_u2_token_address, 10000
+        );
+
+        // mint 10000000 U_1 to user 1
+        let mint_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 10000000);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_u1_amount as u64),
+            underlying_u1_token_address
+        );
+
+        // set asset price for U_1
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u1_token_address,
+            10
+        );
+
+        // supply 1000 U_1 to user 1
+        let supply_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 1000);
+        aave_pool::supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            supply_u1_amount,
+            user1_address,
+            0
+        );
+
+        // mint 10000000 U_2 to user 2
+        let mint_u2_amount =
+            convert_to_currency_decimals(underlying_u2_token_address, 10000000);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user2_address,
+            (mint_u2_amount as u64),
+            underlying_u2_token_address
+        );
+
+        // set asset price for U_2
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u2_token_address,
+            10
+        );
+
+        // supply 2000 U_2 to user 2
+        let supply_u2_amount =
+            convert_to_currency_decimals(underlying_u2_token_address, 2000);
+        aave_pool::supply_logic::supply(
+            user2,
+            underlying_u2_token_address,
+            supply_u2_amount,
+            user2_address,
+            0
+        );
+
+        // Enables collateral
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_u2_token_address, true
+        );
+
+        let (_, _, _, _, usage_as_collateral_enabled) =
+            pool_data_provider::get_user_reserve_data(
+                underlying_u2_token_address, user2_address
+            );
+
+        assert!(usage_as_collateral_enabled == true, TEST_SUCCESS);
+
+        // set global time
+        timestamp::update_global_time_for_test_secs(1000);
+
+        // User 2 borrows U_1 against isolated U_2
+        let reserve_data = pool::get_reserve_data(underlying_u2_token_address);
+        let isolation_mode_total_debt_before_borrow =
+            pool::get_reserve_isolation_mode_total_debt(reserve_data);
+        let isolation_mode_total_debt_after_borrow =
+            isolation_mode_total_debt_before_borrow + 1000;
+
+        let first_borrow_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 10);
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            first_borrow_u1_amount,
+            2,
+            0,
+            user2_address
+        );
+
+        // check isolation mode total debt emitted events
+        let emitted_events = emitted_events<IsolationModeTotalDebtUpdated>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
+
+        // check borrow event
+        let emitted_events = emitted_events<borrow_logic::Borrow>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
+
+        let reserve_data_after = pool::get_reserve_data(underlying_u2_token_address);
+        let isolation_mode_total_debt =
+            pool::get_reserve_isolation_mode_total_debt(reserve_data_after);
+        assert!(
+            isolation_mode_total_debt == isolation_mode_total_debt_after_borrow,
+            TEST_SUCCESS
+        );
+
+        // U_2 exits isolation mode (debt ceiling = 1000)
+        let new_debt_ceiling =
+            convert_to_currency_decimals(underlying_u1_token_address, 1000);
+        pool_configurator::set_debt_ceiling(
+            aave_pool,
+            underlying_u2_token_address,
+            new_debt_ceiling
+        );
+
+        let debt_ceiling =
+            pool_data_provider::get_debt_ceiling(underlying_u2_token_address);
+        assert!(debt_ceiling == new_debt_ceiling, TEST_SUCCESS);
+
+        // User 2 borrows 1 U_1
+        let second_borrow_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 1);
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            second_borrow_u1_amount,
+            2,
+            0,
+            user2_address
+        );
+
+        // User 2 repays debt
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user2_address,
+            (mint_u1_amount as u64),
+            underlying_u1_token_address
+        );
+
+        let repay_u1_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 10);
+        borrow_logic::repay(
+            user2,
+            underlying_u1_token_address,
+            repay_u1_amount,
+            2,
+            user2_address
+        );
+
+        let debt_ceiling =
+            pool_data_provider::get_debt_ceiling(underlying_u2_token_address);
+        assert!(debt_ceiling == new_debt_ceiling, TEST_SUCCESS);
+
+        let reserve_data = pool::get_reserve_data(underlying_u2_token_address);
+        let isolation_mode_total_debt =
+            pool::get_reserve_isolation_mode_total_debt(reserve_data);
+
+        assert!(isolation_mode_total_debt == 100, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aptos_std = @aptos_std,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x041,
+            user2 = @0x042
+        )
+    ]
+    // User 1 deposits 100 U_1, user 2 deposits 100 U_2, borrows 50 U_1
+    // User 2 receives 25 aToken from user 1, repays half of the debt
+    fun test_repay_with_a_tokens_with_repay_half_of_the_debt(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aptos_std: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer,
+        user2: &signer
+    ) {
+        init_reserves_with_oracle(
+            aave_pool,
+            aave_role_super_admin,
+            aptos_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
+
+        let user1_address = signer::address_of(user1);
+        let user2_address = signer::address_of(user2);
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+
+        // mint 10 APT to the user1_address and user2_address
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            user1_address, 1_000_000_000
+        );
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            user2_address, 1_000_000_000
+        );
+
+        // mint 100 U_1 for user 1
+        let mint_amount = convert_to_currency_decimals(underlying_u1_token_address, 100);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_amount as u64),
+            underlying_u1_token_address
+        );
+
+        // user 1 supplies 100 U_1
+        let supply_amount = convert_to_currency_decimals(
+            underlying_u1_token_address, 100
+        );
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            supply_amount,
+            user1_address,
+            0
+        );
+
+        let underlying_u2_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_2"));
+        // mint 100 U_2 for user 2
+        let mint_amount = convert_to_currency_decimals(underlying_u2_token_address, 100);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user2_address,
+            (mint_amount as u64),
+            underlying_u2_token_address
+        );
+
+        // user 2 supplies 100 U_2
+        let supply_amount = convert_to_currency_decimals(
+            underlying_u2_token_address, 100
+        );
+        supply_logic::supply(
+            user2,
+            underlying_u2_token_address,
+            supply_amount,
+            user2_address,
+            0
+        );
+
+        // set asset price
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u1_token_address,
+            100
+        );
+
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u2_token_address,
+            100
+        );
+
+        // set global time
+        timestamp::fast_forward_seconds(1000);
+
+        // user 2 borrows 50 U_1
+        let borrow_amount = convert_to_currency_decimals(
+            underlying_u1_token_address, 50
+        );
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            borrow_amount,
+            2, // variable interest rate mode
+            0, // referral
+            user2_address
+        );
+
+        // user 1 transfers 25 aToken to user 2
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
+        let variable_debt_token_address =
+            pool::get_reserve_variable_debt_token_address(reserve_data);
+
+        let transfer_amount = convert_to_currency_decimals(a_token_address, 25);
+        pool_token_logic::transfer(
+            user1,
+            user2_address,
+            transfer_amount,
+            a_token_address
+        );
+
+        let user2_balance_before =
+            a_token_factory::balance_of(user2_address, a_token_address);
+        let user2_debt_before =
+            variable_debt_token_factory::balance_of(
+                user2_address, variable_debt_token_address
+            );
+
+        // user 2 repays half of the debt
+        let repay_amount = convert_to_currency_decimals(underlying_u1_token_address, 25);
+        borrow_logic::repay_with_a_tokens(
+            user2,
+            underlying_u1_token_address,
+            repay_amount,
+            2 // variable interest rate mode
+        );
+
+        // check emitted events
+        let emitted_repay_events = emitted_events<borrow_logic::Repay>();
+        assert!(vector::length(&emitted_repay_events) == 1, TEST_SUCCESS);
+
+        // check user 2 balances
+        let user2_balance_after =
+            a_token_factory::balance_of(user2_address, a_token_address);
+        assert!(
+            user2_balance_after == user2_balance_before - repay_amount,
+            TEST_SUCCESS
+        );
+
+        let user2_debt_after =
+            variable_debt_token_factory::balance_of(
+                user2_address, variable_debt_token_address
+            );
+        assert!(
+            user2_debt_after == user2_debt_before - repay_amount,
+            TEST_SUCCESS
+        );
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aptos_std = @aptos_std,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x041,
+            user2 = @0x042
+        )
+    ]
+    // User 1 deposits 100 U_1, user 2 deposits 100 U_2, borrows 50 U_1
+    // User 2 receives 25 aToken from user 1, use all aToken to repay debt
+    fun test_repay_with_a_tokens_with_all_atoken_to_repay_debt(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aptos_std: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer,
+        user2: &signer
+    ) {
+        init_reserves_with_oracle(
+            aave_pool,
+            aave_role_super_admin,
+            aptos_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
+
+        let user1_address = signer::address_of(user1);
+        let user2_address = signer::address_of(user2);
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+
+        // mint 10 APT to the user1_address and user2_address
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            user1_address, 1_000_000_000
+        );
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            user2_address, 1_000_000_000
+        );
+
+        // mint 100 U_1 for user 1
+        let mint_amount = convert_to_currency_decimals(underlying_u1_token_address, 100);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_amount as u64),
+            underlying_u1_token_address
+        );
+
+        // user 1 supplies 100 U_1
+        let supply_amount = convert_to_currency_decimals(
+            underlying_u1_token_address, 100
+        );
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            supply_amount,
+            user1_address,
+            0
+        );
+
+        let underlying_u2_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_2"));
+        // mint 100 U_2 for user 2
+        let mint_amount = convert_to_currency_decimals(underlying_u2_token_address, 100);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user2_address,
+            (mint_amount as u64),
+            underlying_u2_token_address
+        );
+
+        // user 2 supplies 100 U_2
+        let supply_amount = convert_to_currency_decimals(
+            underlying_u2_token_address, 100
+        );
+        supply_logic::supply(
+            user2,
+            underlying_u2_token_address,
+            supply_amount,
+            user2_address,
+            0
+        );
+
+        // set asset price
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u1_token_address,
+            100
+        );
+
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u2_token_address,
+            100
+        );
+
+        // set global time
+        timestamp::fast_forward_seconds(1000);
+
+        // user 2 borrows 50 U_1
+        let borrow_amount = convert_to_currency_decimals(
+            underlying_u1_token_address, 50
+        );
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            borrow_amount,
+            2, // variable interest rate mode
+            0, // referral
+            user2_address
+        );
+
+        // user 1 transfers 25 aToken to user 2
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
+        let variable_debt_token_address =
+            pool::get_reserve_variable_debt_token_address(reserve_data);
+
+        let transfer_amount = convert_to_currency_decimals(a_token_address, 25);
+        pool_token_logic::transfer(
+            user1,
+            user2_address,
+            transfer_amount,
+            a_token_address
+        );
+
+        let user2_balance_before =
+            a_token_factory::balance_of(user2_address, a_token_address);
+        assert!(user2_balance_before == transfer_amount, TEST_SUCCESS);
+
+        let user2_debt_before =
+            variable_debt_token_factory::balance_of(
+                user2_address, variable_debt_token_address
+            );
+
+        // user 2 repays half of the debt
+        let repay_amount = math_utils::u256_max();
+        borrow_logic::repay_with_a_tokens(
+            user2,
+            underlying_u1_token_address,
+            repay_amount,
+            2 // variable interest rate mode
+        );
+
+        // check emitted events
+        let emitted_repay_events = emitted_events<borrow_logic::Repay>();
+        assert!(vector::length(&emitted_repay_events) == 1, TEST_SUCCESS);
+
+        // check user 2 balances
+        let user2_balance_after =
+            a_token_factory::balance_of(user2_address, a_token_address);
+        assert!(user2_balance_after == 0, TEST_SUCCESS);
+
+        let user2_debt_after =
+            variable_debt_token_factory::balance_of(
+                user2_address, variable_debt_token_address
+            );
+        assert!(
+            user2_debt_after == user2_debt_before - transfer_amount,
+            TEST_SUCCESS
+        );
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aptos_std = @aptos_std,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x041,
+            user2 = @0x042
+        )
+    ]
+    // User 1 deposits 100 U_1, user 2 deposits 100 U_2, borrows 50 U_1
+    // User 2 receives 50 aToken from user 1, repay all debt
+    fun test_repay_with_a_tokens_with_repay_all_debt(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aptos_std: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer,
+        user2: &signer
+    ) {
+        init_reserves_with_oracle(
+            aave_pool,
+            aave_role_super_admin,
+            aptos_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
+
+        let user1_address = signer::address_of(user1);
+        let user2_address = signer::address_of(user2);
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        // mint 100 U_1 for user 1
+        let mint_amount = convert_to_currency_decimals(underlying_u1_token_address, 100);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_amount as u64),
+            underlying_u1_token_address
+        );
+
+        // user 1 supplies 100 U_1
+        let supply_amount = convert_to_currency_decimals(
+            underlying_u1_token_address, 100
+        );
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            supply_amount,
+            user1_address,
+            0
+        );
+
+        let underlying_u2_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_2"));
+
+        // mint 10 APT to the user1_address and user2_address
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            user1_address, 1_000_000_000
+        );
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            user2_address, 1_000_000_000
+        );
+
+        // mint 100 U_2 for user 2
+        let mint_amount = convert_to_currency_decimals(underlying_u2_token_address, 100);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user2_address,
+            (mint_amount as u64),
+            underlying_u2_token_address
+        );
+
+        // user 2 supplies 100 U_2
+        let supply_amount = convert_to_currency_decimals(
+            underlying_u2_token_address, 100
+        );
+        supply_logic::supply(
+            user2,
+            underlying_u2_token_address,
+            supply_amount,
+            user2_address,
+            0
+        );
+
+        // set asset price
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u1_token_address,
+            100
+        );
+
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u2_token_address,
+            100
+        );
+
+        // set global time
+        timestamp::fast_forward_seconds(1000);
+
+        // user 2 borrows 50 U_1
+        let borrow_amount = convert_to_currency_decimals(
+            underlying_u1_token_address, 50
+        );
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            borrow_amount,
+            2, // variable interest rate mode
+            0, // referral
+            user2_address
+        );
+
+        // user 1 transfers 25 aToken to user 2
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
+        let variable_debt_token_address =
+            pool::get_reserve_variable_debt_token_address(reserve_data);
+
+        let transfer_amount = convert_to_currency_decimals(a_token_address, 50);
+        pool_token_logic::transfer(
+            user1,
+            user2_address,
+            transfer_amount,
+            a_token_address
+        );
+
+        let user2_balance_before =
+            a_token_factory::balance_of(user2_address, a_token_address);
+        assert!(user2_balance_before == transfer_amount, TEST_SUCCESS);
+
+        let user2_debt_before =
+            variable_debt_token_factory::balance_of(
+                user2_address, variable_debt_token_address
+            );
+
+        // user 2 repays half of the debt
+        let repay_amount = math_utils::u256_max();
+        borrow_logic::repay_with_a_tokens(
+            user2,
+            underlying_u1_token_address,
+            repay_amount,
+            2 // variable interest rate mode
+        );
+
+        // check emitted events
+        let emitted_repay_events = emitted_events<borrow_logic::Repay>();
+        assert!(vector::length(&emitted_repay_events) == 1, TEST_SUCCESS);
+
+        // check user 2 balances
+        let user2_balance_after =
+            a_token_factory::balance_of(user2_address, a_token_address);
+        assert!(
+            user2_balance_after == user2_balance_before - user2_debt_before,
+            TEST_SUCCESS
+        );
+
+        let user2_debt_after =
+            variable_debt_token_factory::balance_of(
+                user2_address, variable_debt_token_address
+            );
+        assert!(user2_debt_after == 0, TEST_SUCCESS);
+
+        // Check interest rates after repaying with aTokens
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
+        let reserve_config_map =
+            pool::get_reserve_configuration_by_reserve_data(reserve_data);
+        let current_liquidity_rate =
+            pool::get_reserve_current_liquidity_rate(reserve_data);
+        let current_variable_borrow_rate =
+            pool::get_reserve_current_variable_borrow_rate(reserve_data);
+
+        let unbacked = 0;
+        let liquidity_added = 0;
+        let liquidity_taken = 0;
+        let total_variable_debt =
+            variable_debt_token_factory::total_supply(variable_debt_token_address);
+        let reserve_factor = reserve_config::get_reserve_factor(&reserve_config_map);
+        let reserve = underlying_u1_token_address;
+        // The underlying token balance corresponding to the aToken
+        let a_token_underlying_balance =
+            (
+                fungible_asset_manager::balance_of(
+                    a_token_factory::get_token_account_address(a_token_address),
+                    underlying_u1_token_address
+                ) as u256
+            );
+
+        let (cacl_current_liquidity_rate, cacl_current_variable_borrow_rate) =
+            default_reserve_interest_rate_strategy::calculate_interest_rates(
+                unbacked,
+                liquidity_added,
+                liquidity_taken,
+                total_variable_debt,
+                reserve_factor,
+                reserve,
+                a_token_underlying_balance
+            );
+
+        assert!(
+            (current_liquidity_rate as u256) == cacl_current_liquidity_rate, TEST_SUCCESS
+        );
+        assert!(
+            (current_variable_borrow_rate as u256) == cacl_current_variable_borrow_rate,
+            TEST_SUCCESS
+        );
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aptos_std = @aptos_std,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user1 = @0x041,
+            user2 = @0x042
+        )
+    ]
+    // User 1 deposits 100 U_1, user 2 deposits 100 U_2, borrows 50 U_1
+    // User 2 receives 60 aToken from user 1, user2 collateral state is false
+    fun test_repay_with_a_tokens_with_user_collateral_state_is_false(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aptos_std: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        user1: &signer,
+        user2: &signer
+    ) {
+        init_reserves_with_oracle(
+            aave_pool,
+            aave_role_super_admin,
+            aptos_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
+
+        let user1_address = signer::address_of(user1);
+        let user2_address = signer::address_of(user2);
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        // mint 100 U_1 for user 1
+        let mint_amount = convert_to_currency_decimals(underlying_u1_token_address, 100);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (mint_amount as u64),
+            underlying_u1_token_address
+        );
+
+        // user 1 supplies 100 U_1
+        let supply_amount = convert_to_currency_decimals(
+            underlying_u1_token_address, 100
+        );
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            supply_amount,
+            user1_address,
+            0
+        );
+
+        let underlying_u2_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_2"));
+
+        // mint 10 APT to the user1_address and user2_address
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            user1_address, 1_000_000_000
+        );
+        aptos_framework::aptos_coin_tests::mint_apt_fa_to_primary_fungible_store_for_test(
+            user2_address, 1_000_000_000
+        );
+
+        // mint 100 U_2 for user 2
+        let mint_amount = convert_to_currency_decimals(underlying_u2_token_address, 100);
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user2_address,
+            (mint_amount as u64),
+            underlying_u2_token_address
+        );
+
+        // user 2 supplies 100 U_2
+        let supply_amount = convert_to_currency_decimals(
+            underlying_u2_token_address, 100
+        );
+        supply_logic::supply(
+            user2,
+            underlying_u2_token_address,
+            supply_amount,
+            user2_address,
+            0
+        );
+
+        // set asset price
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u1_token_address,
+            100
+        );
+
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u2_token_address,
+            100
+        );
+
+        // set global time
+        timestamp::fast_forward_seconds(1000);
+
+        // user 2 borrows 50 U_1
+        let borrow_amount = convert_to_currency_decimals(
+            underlying_u1_token_address, 50
+        );
+        borrow_logic::borrow(
+            user2,
+            underlying_u1_token_address,
+            borrow_amount,
+            2, // variable interest rate mode
+            0, // referral
+            user2_address
+        );
+
+        // user 1 transfers 25 aToken to user 2
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
+        let a_token_address = pool::get_reserve_a_token_address(reserve_data);
+        let variable_debt_token_address =
+            pool::get_reserve_variable_debt_token_address(reserve_data);
+
+        let transfer_amount = convert_to_currency_decimals(a_token_address, 60);
+        pool_token_logic::transfer(
+            user1,
+            user2_address,
+            transfer_amount,
+            a_token_address
+        );
+
+        let user2_balance_before =
+            a_token_factory::balance_of(user2_address, a_token_address);
+        assert!(user2_balance_before == transfer_amount, TEST_SUCCESS);
+
+        let user2_debt_before =
+            variable_debt_token_factory::balance_of(
+                user2_address, variable_debt_token_address
+            );
+
+        // set user2 collateral state to false
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_u1_token_address, false
+        );
+
+        // user 2 repays half of the debt
+        let repay_amount = math_utils::u256_max();
+        borrow_logic::repay_with_a_tokens(
+            user2,
+            underlying_u1_token_address,
+            repay_amount,
+            2 // variable interest rate mode
+        );
+
+        // check emitted events
+        let emitted_repay_events = emitted_events<borrow_logic::Repay>();
+        assert!(vector::length(&emitted_repay_events) == 1, TEST_SUCCESS);
+
+        // check user 2 balances
+        let user2_balance_after =
+            a_token_factory::balance_of(user2_address, a_token_address);
+        assert!(
+            user2_balance_after == user2_balance_before - user2_debt_before,
+            TEST_SUCCESS
+        );
+
+        let user2_debt_after =
+            variable_debt_token_factory::balance_of(
+                user2_address, variable_debt_token_address
+            );
+        assert!(user2_debt_after == 0, TEST_SUCCESS);
+
+        // Check interest rates after repaying with aTokens
+        let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
+        let reserve_config_map =
+            pool::get_reserve_configuration_by_reserve_data(reserve_data);
+        let current_liquidity_rate =
+            pool::get_reserve_current_liquidity_rate(reserve_data);
+        let current_variable_borrow_rate =
+            pool::get_reserve_current_variable_borrow_rate(reserve_data);
+
+        let unbacked = 0;
+        let liquidity_added = 0;
+        let liquidity_taken = 0;
+        let total_variable_debt =
+            variable_debt_token_factory::total_supply(variable_debt_token_address);
+        let reserve_factor = reserve_config::get_reserve_factor(&reserve_config_map);
+        let reserve = underlying_u1_token_address;
+        // The underlying token balance corresponding to the aToken
+        let a_token_underlying_balance =
+            (
+                fungible_asset_manager::balance_of(
+                    a_token_factory::get_token_account_address(a_token_address),
+                    underlying_u1_token_address
+                ) as u256
+            );
+
+        let (cacl_current_liquidity_rate, cacl_current_variable_borrow_rate) =
+            default_reserve_interest_rate_strategy::calculate_interest_rates(
+                unbacked,
+                liquidity_added,
+                liquidity_taken,
+                total_variable_debt,
+                reserve_factor,
+                reserve,
+                a_token_underlying_balance
+            );
+
+        assert!(
+            (current_liquidity_rate as u256) == cacl_current_liquidity_rate, TEST_SUCCESS
+        );
+        assert!(
+            (current_variable_borrow_rate as u256) == cacl_current_variable_borrow_rate,
+            TEST_SUCCESS
+        );
     }
 }

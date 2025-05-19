@@ -3,7 +3,6 @@ import { Transaction, View } from "../helpers/helper";
 import {
   AclManager,
   addAssetListingAdminFuncAddr,
-  addBridgeFuncAddr,
   addEmergencyAdminFuncAddr,
   addFlashBorrowerFuncAddr,
   addPoolAdminFuncAddr,
@@ -13,13 +12,11 @@ import {
   grantRoleFuncAddr,
   hasRoleFuncAddr,
   isAssetListingAdminFuncAddr,
-  isBridgeFuncAddr,
   isEmergencyAdminFuncAddr,
   isFlashBorrowerFuncAddr,
   isPoolAdminFuncAddr,
   isRiskAdminFuncAddr,
   removeAssetListingAdminFuncAddr,
-  removeBridgeFuncAddr,
   removeEmergencyAdminFuncAddr,
   removeFlashBorrowerFuncAddr,
   removePoolAdminFuncAddr,
@@ -72,7 +69,7 @@ describe("Access Control List Manager", () => {
     try {
       await Transaction(aptos, flashBorrowAdmin, addFlashBorrowerFuncAddr, [flashBorrower.accountAddress.toString()]);
     } catch (err) {
-      expect(err.toString().includes("ENOT_MANAGEMENT(0x1)")).toBe(true);
+      expect(err.toString().includes("0x3ea")).toBe(true);
     }
 
     const [isFlashBorrowerAfter] = await View(aptos, hasRoleFuncAddr, [
@@ -139,7 +136,7 @@ describe("Access Control List Manager", () => {
         flashBorrower.accountAddress.toString(),
       ]);
     } catch (err) {
-      expect(err.toString().includes("ENOT_MANAGEMENT(0x1)")).toBe(true);
+      expect(err.toString().includes("0x3ea")).toBe(true);
     }
 
     const [isFlashBorrowerAfter] = await View(aptos, isFlashBorrowerFuncAddr, [
@@ -178,19 +175,6 @@ describe("Access Control List Manager", () => {
     await Transaction(aptos, AclManager, addEmergencyAdminFuncAddr, [emergencyAdmin.accountAddress.toString()]);
 
     const [isAdminAfter] = await View(aptos, isEmergencyAdminFuncAddr, [emergencyAdmin.accountAddress.toString()]);
-    expect(isAdminAfter).toBe(true);
-  });
-
-  it("Grant BRIDGE role", async () => {
-    const {
-      users: [, , , bridgeAdmin],
-    } = testEnv;
-    const [isAdmin] = await View(aptos, isBridgeFuncAddr, [bridgeAdmin.accountAddress.toString()]);
-    expect(isAdmin).toBe(false);
-
-    await Transaction(aptos, AclManager, addBridgeFuncAddr, [bridgeAdmin.accountAddress.toString()]);
-
-    const [isAdminAfter] = await View(aptos, isBridgeFuncAddr, [bridgeAdmin.accountAddress.toString()]);
     expect(isAdminAfter).toBe(true);
   });
 
@@ -301,19 +285,6 @@ describe("Access Control List Manager", () => {
       emergencyAdmin.accountAddress.toString(),
     ]);
     expect(isEmergencyAdminAfter).toBe(false);
-  });
-
-  it("Revoke BRIDGE", async () => {
-    const {
-      users: [, , , bridgeAdmin],
-    } = testEnv;
-    const [isBridgeAdmin] = await View(aptos, isBridgeFuncAddr, [bridgeAdmin.accountAddress.toString()]);
-    expect(isBridgeAdmin).toBe(true);
-
-    await Transaction(aptos, AclManager, removeBridgeFuncAddr, [bridgeAdmin.accountAddress.toString()]);
-
-    const [isBridgeAdminAfter] = await View(aptos, isBridgeFuncAddr, [bridgeAdmin.accountAddress.toString()]);
-    expect(isBridgeAdminAfter).toBe(false);
   });
 
   it("Revoke RISK_ADMIN", async () => {

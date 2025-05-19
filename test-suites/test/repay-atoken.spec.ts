@@ -37,11 +37,10 @@ describe("Repay Atoken Test", () => {
 
     await Transaction(aptos, user1, BorrowFuncAddr, [
       dai,
-      user1.accountAddress.toString(),
       daiBorrowAmount.toString(),
-      1,
+      2,
       0,
-      true,
+      user1.accountAddress.toString(),
     ]);
   });
 
@@ -66,6 +65,6 @@ describe("Repay Atoken Test", () => {
     } = testEnv;
     const daiDecimals = await getDecimals(UnderlyingDecimalsFuncAddr, dai);
     const repayAmount = 10 ** daiDecimals;
-    await Transaction(aptos, user1, RepayWithATokensFuncAddr, [dai, repayAmount, 1]);
+    await Transaction(aptos, user1, RepayWithATokensFuncAddr, [dai, repayAmount, 2]);
   });
 });

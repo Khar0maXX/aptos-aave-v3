@@ -1,0 +1,61 @@
+name: Move V2 version compatibility
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight UTC
+  workflow_dispatch:  # Enables manual trigger from GitHub UI
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_ACTIONS: true
+  APTOS_NETWORK: local
+  MOVE_VERSION: 2
+  COMPILER_VERSION: 2
+  UPGRADE_CONTRACTS: false
+  ARTIFACTS_LEVEL: all
+  DEFAULT_FUND_AMOUNT: 40000000
+
+jobs:
+  unit-tests:
+    name: Run Aptos Unit Tests
+    runs-on: Larger-Github-Runners
+    timeout-minutes: 60
+    env:
+      DEFAULT_FUNDER_PRIVATE_KEY: ${{ secrets.GH_DEFAULT_FUNDER_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install latest Aptos CLI
+        run: |
+          curl -fsSL "https://aptos.dev/scripts/install_cli.py" | python3
+          aptos --version  # Verify that Aptos CLI is installed
+
+      - name: Run Aptos Create Local Testnet
+        run: |
+          make local-testnet &
+          echo $! > aptos_serve_pid.txt
+
+      - name: Wait for Aptos Local Testnet to be ready
+        run: sleep 20
+
+      - name: Set Local Aptos Workspace Config
+        run: make set-workspace-config
+
+      - name: Init Local Aptos Workspace Config
+        run: make init-workspace-config
+
+      - name: Run Aptos Create Profiles
+        run: make init-profiles
+
+      - name: Run Aptos Fund Profiles
+        run: make fund-profiles
+
+      - name: Run Aptos Compile All Contracts
+        run: make compile-all
+
+      - name: Run Aptos Test All Contracts
+        run: make test-all
+
+      - name: Terminate Aptos Local Testnet
+        if: always()
+        run: |-
+          kill $(cat aptos_serve_pid.txt) || true

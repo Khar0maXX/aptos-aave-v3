@@ -5,13 +5,8 @@ authors = []
 
 [addresses]
 data_feeds = "_"
-aave_oracle_racc_address =  "_"
+aave_oracle_racc_address = "_"
 platform = "_"
-
-#[dev-addresses]
-#data_feeds = "0x100"
-#aave_oracle_racc_address = "0xcafe"
-#platform = "0xbaba"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", rev = "mainnet", subdir = "aptos-move/framework/aptos-framework" }

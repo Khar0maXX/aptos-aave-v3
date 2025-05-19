@@ -17,7 +17,8 @@ module aave_math::math_utils_tests {
         percent_div,
         percent_mul,
         pow,
-        u256_max
+        u256_max,
+        calculate_compounded_interest
     };
     use aave_math::wad_ray_math::ray;
 
@@ -84,6 +85,88 @@ module aave_math::math_utils_tests {
         assert!(
             compunded_interest_rate_increase > lin_interest_rate_increase, TEST_SUCCESS
         );
+
+        let last_update_timestamp = timestamp::now_seconds();
+        let current_timestamp = last_update_timestamp;
+        // current_timestamp == last_update_timestamp
+        // current_timestamp - lastUpdateTimestamp == 0, ray = 1
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year, last_update_timestamp, current_timestamp
+            );
+        assert!(interest_rate == ray(), TEST_SUCCESS);
+
+        // current_timestamp - last_update_timestamp = 2, ray = 1
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year, 1000000000, 1000000002
+            );
+        assert!(interest_rate == 1000000063419585978551030828, TEST_SUCCESS);
+
+        let current_timestamp = last_update_timestamp + 3600; // 1 hour later
+        // current_timestamp - last_update_timestamp = 3600, ray = 0.01
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year / 100, last_update_timestamp, current_timestamp
+            );
+        assert!(interest_rate == 1000001141553162986841207898, TEST_SUCCESS);
+        // current_timestamp - last_update_timestamp = 3600, ray = 0.1
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year / 10, last_update_timestamp, current_timestamp
+            );
+        assert!(interest_rate == 1000011415590271510001292590, TEST_SUCCESS);
+
+        // current_timestamp - last_update_timestamp = 3600, ray = 1
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year, last_update_timestamp, current_timestamp
+            );
+        assert!(interest_rate == 1000114161767100168303286247, TEST_SUCCESS);
+
+        let current_timestamp = last_update_timestamp + 86400; // 1 day later
+        // current_timestamp - last_update_timestamp = 86400, ray = 0.01
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year / 100, last_update_timestamp, current_timestamp
+            );
+        assert!(interest_rate == 1000027397635582335304969534, TEST_SUCCESS);
+
+        // current_timestamp - last_update_timestamp = 86400, ray = 0.1
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year / 10, last_update_timestamp, current_timestamp
+            );
+        assert!(interest_rate == 1000274010136660694348404654, TEST_SUCCESS);
+
+        // current_timestamp - last_update_timestamp = 86400, ray = 1
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year, last_update_timestamp, current_timestamp
+            );
+        assert!(interest_rate == 1002743482504192190401276379, TEST_SUCCESS);
+
+        let current_timestamp = last_update_timestamp + 31536000; // 1 year later
+        // current_timestamp - last_update_timestamp = 31536000, ray = 0.01
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year / 100, last_update_timestamp, current_timestamp
+            );
+        assert!(interest_rate == 1010050166666666666666666667, TEST_SUCCESS);
+
+        // current_timestamp - last_update_timestamp = 31536000, ray = 0.1
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year / 10, last_update_timestamp, current_timestamp
+            );
+        assert!(interest_rate == 1105166666666666666666666667, TEST_SUCCESS);
+
+        // current_timestamp - last_update_timestamp = 31536000, ray = 1
+        let interest_rate =
+            calculate_compounded_interest(
+                interest_rate_per_year, last_update_timestamp, current_timestamp
+            );
+        assert!(interest_rate == 2666666666666666666666666666, TEST_SUCCESS);
     }
 
     #[test]
@@ -95,6 +178,8 @@ module aave_math::math_utils_tests {
 
         // test mult with 0 value
         assert!(percent_mul(0, percentage) == 0, TEST_SUCCESS);
+        assert!(percent_mul(value, 0) == 0, TEST_SUCCESS);
+        assert!(percent_mul(0, 0) == 0, TEST_SUCCESS);
     }
 
     #[test]
@@ -133,5 +218,17 @@ module aave_math::math_utils_tests {
     #[expected_failure(abort_code = EDIVISION_BY_ZERO, location = aave_math::math_utils)]
     fun test_percent_div_by_zero() {
         percent_div(50, 0);
+    }
+
+    #[test]
+    #[expected_failure(arithmetic_error, location = aave_math::math_utils)]
+    fun test_calculate_compounded_interest_overflow() {
+        calculate_compounded_interest(u256_max(), 1000000000, 1000000004);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = EOVERFLOW, location = aave_math::math_utils)]
+    fun test_calculate_compounded_interest_with_current_time_less_than_last_update_timestamp() {
+        calculate_compounded_interest(ray(), 1000000008, 1000000000);
     }
 }

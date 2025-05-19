@@ -4,6 +4,8 @@ import { OracleManager } from "../configs/oracle";
 import { oneEther } from "../helpers/constants";
 import { OracleClient } from "../clients/oracleClient";
 import { AptosProvider } from "../wrappers/aptosProvider";
+import { priceFeeds } from "../helpers/priceFeeds";
+import { WETH } from "../configs/tokens";
 
 describe("AaveOracle", () => {
   beforeAll(async () => {
@@ -15,7 +17,7 @@ describe("AaveOracle", () => {
     const sourcePrice = "100";
 
     const oracleClient = new OracleClient(AptosProvider.fromEnvs(), OracleManager);
-    await oracleClient.setAssetPrice(weth, BigNumber.from(sourcePrice));
+    await oracleClient.setAssetCustomPrice(weth, BigNumber.from(sourcePrice));
 
     const newPrice = await oracleClient.getAssetPrice(weth);
     expect(newPrice.toString()).toBe(sourcePrice);
@@ -26,7 +28,7 @@ describe("AaveOracle", () => {
     const fallbackPrice = oneEther.toString();
 
     const oracleClient = new OracleClient(AptosProvider.fromEnvs(), OracleManager);
-    await oracleClient.setAssetPrice(weth, BigNumber.from(fallbackPrice));
+    await oracleClient.setAssetCustomPrice(weth, BigNumber.from(fallbackPrice));
 
     const newPrice = await oracleClient.getAssetPrice(weth);
     expect(newPrice.toString()).toBe(fallbackPrice);

@@ -12,6 +12,8 @@ env:
   CI: true
   GITHUB_ACTIONS: true
   APTOS_NETWORK: local
+  MOVE_VERSION: 2.1
+  COMPILER_VERSION: 2.0
   UPGRADE_CONTRACTS: false
   ARTIFACTS_LEVEL: all
   AAVE_LARGE_PACKAGES_PRIVATE_KEY: ${{ secrets.GH_AAVE_LARGE_PACKAGES_PRIVATE_KEY }}  # temp hack: remove after large packages is no longer needed

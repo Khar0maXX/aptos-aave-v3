@@ -22,7 +22,6 @@ module aave_config::reserve_tests {
         get_params,
         get_reserve_factor,
         get_supply_cap,
-        get_unbacked_mint_cap,
         init,
         ReserveConfigurationMap,
         set_borrow_cap,
@@ -37,7 +36,24 @@ module aave_config::reserve_tests {
         set_ltv,
         set_reserve_factor,
         set_supply_cap,
-        set_unbacked_mint_cap
+        get_active,
+        set_active,
+        get_paused,
+        set_paused,
+        get_borrowable_in_isolation,
+        set_borrowable_in_isolation,
+        get_siloed_borrowing,
+        set_siloed_borrowing,
+        get_debt_ceiling,
+        set_debt_ceiling,
+        get_debt_ceiling_decimals,
+        get_max_reserves_count,
+        get_max_valid_liquidation_bonus,
+        get_max_valid_borrow_cap,
+        get_max_valid_supply_cap,
+        get_max_valid_debt_ceiling,
+        get_min_reserve_asset_decimals,
+        get_max_valid_liquidation_grace_period
     };
 
     //
@@ -61,11 +77,17 @@ module aave_config::reserve_tests {
 
     // enum
     const ENUM_LTV: u256 = 1;
-    const ENUM_LIQUIDATION_THRESHOLD: u256 = 2;
-    const ENUM_LIQUIDATION_BONUS: u256 = 3;
-    const ENUM_DECIMALS: u256 = 4;
-    const ENUM_RESERVE_FACTOR: u256 = 5;
-    const ENUM_EMODE_CATEGORY: u256 = 6;
+    const ENUM_LIQUIDATION_GRACE_PERIOD_UNTIL: u256 = 2;
+    const ENUM_LIQUIDATION_THRESHOLD: u256 = 3;
+    const ENUM_LIQUIDATION_BONUS: u256 = 4;
+    const ENUM_DECIMALS: u256 = 5;
+    const ENUM_RESERVE_FACTOR: u256 = 6;
+    const ENUM_EMODE_CATEGORY: u256 = 7;
+
+    const MAX_VALID_LIQUIDATION_GRACE_PERIOD: u256 = 4 * 3600; // 4 hours in secs
+    const MIN_RESERVE_ASSET_DECIMALS: u8 = 6;
+    const DEBT_CEILING_DECIMALS: u256 = 2;
+    const MAX_RESERVES_COUNT: u256 = 128;
 
     // check params
     fun check_params(
@@ -313,18 +335,6 @@ module aave_config::reserve_tests {
     }
 
     #[test]
-    fun test_get_unbacked_mint_cap() {
-        let reserve_config = init();
-        assert!(get_unbacked_mint_cap(&reserve_config) == ZERO, SUCCESS);
-
-        set_unbacked_mint_cap(&mut reserve_config, UNBACKED_MINT_CAP);
-        assert!(get_unbacked_mint_cap(&reserve_config) == UNBACKED_MINT_CAP, SUCCESS);
-
-        set_unbacked_mint_cap(&mut reserve_config, ZERO);
-        assert!(get_unbacked_mint_cap(&reserve_config) == ZERO, SUCCESS);
-    }
-
-    #[test]
     fun test_get_flash_loan_enabled() {
         let reserve_config = init();
         assert!(get_flash_loan_enabled(&reserve_config) == false, SUCCESS);
@@ -419,6 +429,94 @@ module aave_config::reserve_tests {
     }
 
     #[test]
+    fun test_set_active() {
+        let reserve_config = init();
+        assert!(!get_active(&reserve_config), SUCCESS);
+        set_active(&mut reserve_config, true);
+        assert!(get_active(&reserve_config), SUCCESS);
+    }
+
+    #[test]
+    fun test_get_active() {
+        let reserve_config = init();
+        assert!(!get_active(&reserve_config), SUCCESS);
+        set_active(&mut reserve_config, true);
+        assert!(get_active(&reserve_config), SUCCESS);
+        set_active(&mut reserve_config, false);
+        assert!(!get_active(&reserve_config), SUCCESS);
+    }
+
+    #[test]
+    fun test_set_paused() {
+        let reserve_config = init();
+        assert!(!get_paused(&reserve_config), SUCCESS);
+        set_paused(&mut reserve_config, true);
+        assert!(get_paused(&reserve_config), SUCCESS);
+    }
+
+    #[test]
+    fun test_get_paused() {
+        let reserve_config = init();
+        assert!(!get_paused(&reserve_config), SUCCESS);
+        set_paused(&mut reserve_config, true);
+        assert!(get_paused(&reserve_config), SUCCESS);
+        set_paused(&mut reserve_config, false);
+        assert!(!get_paused(&reserve_config), SUCCESS);
+    }
+
+    #[test]
+    fun test_set_borrowable_in_isolation() {
+        let reserve_config = init();
+        assert!(!get_borrowable_in_isolation(&reserve_config), SUCCESS);
+        set_borrowable_in_isolation(&mut reserve_config, true);
+        assert!(get_borrowable_in_isolation(&reserve_config), SUCCESS);
+    }
+
+    #[test]
+    fun test_get_borrowable_in_isolation() {
+        let reserve_config = init();
+        assert!(!get_borrowable_in_isolation(&reserve_config), SUCCESS);
+        set_borrowable_in_isolation(&mut reserve_config, true);
+        assert!(get_borrowable_in_isolation(&reserve_config), SUCCESS);
+        set_borrowable_in_isolation(&mut reserve_config, false);
+        assert!(!get_borrowable_in_isolation(&reserve_config), SUCCESS);
+    }
+
+    #[test]
+    fun test_set_siloed_borrowing() {
+        let reserve_config = init();
+        assert!(!get_siloed_borrowing(&reserve_config), SUCCESS);
+        set_siloed_borrowing(&mut reserve_config, true);
+        assert!(get_siloed_borrowing(&reserve_config), SUCCESS);
+    }
+
+    #[test]
+    fun test_get_siloed_borrowing() {
+        let reserve_config = init();
+        assert!(!get_siloed_borrowing(&reserve_config), SUCCESS);
+        set_siloed_borrowing(&mut reserve_config, true);
+        assert!(get_siloed_borrowing(&reserve_config), SUCCESS);
+        set_siloed_borrowing(&mut reserve_config, false);
+        assert!(!get_siloed_borrowing(&reserve_config), SUCCESS);
+    }
+
+    #[test]
+    fun test_set_debt_ceiling() {
+        let reserve_config = init();
+        assert!(get_debt_ceiling(&reserve_config) == ZERO, SUCCESS);
+        set_debt_ceiling(&mut reserve_config, 10);
+        assert!(get_debt_ceiling(&reserve_config) == 10, SUCCESS);
+    }
+
+    #[test]
+    fun test_get_debt_ceiling() {
+        let reserve_config = init();
+        assert!(get_debt_ceiling(&reserve_config) == ZERO, SUCCESS);
+        set_debt_ceiling(&mut reserve_config, 20);
+        assert!(get_debt_ceiling(&reserve_config) == 20, SUCCESS);
+    }
+
+    #[test]
     // set_decimals() with decimals > MAX_VALID_DECIMALS (revert expected)
     #[expected_failure(abort_code = 66, location = aave_config::reserve_config)]
     fun test_set_decimals_expected_failure() {
@@ -483,5 +581,58 @@ module aave_config::reserve_tests {
             &mut reserve_config, get_max_valid_liquidation_protocol_fee() + 1
         );
         assert!(get_liquidation_protocol_fee(&reserve_config) == ZERO, SUCCESS);
+    }
+
+    #[test]
+    fun test_get_debt_ceiling_decimals() {
+        assert!(get_debt_ceiling_decimals() == DEBT_CEILING_DECIMALS, SUCCESS);
+    }
+
+    #[test]
+    fun test_get_max_reserves_count() {
+        assert!(get_max_reserves_count() == MAX_RESERVES_COUNT, SUCCESS);
+    }
+
+    #[test]
+    fun test_get_min_reserve_asset_decimals() {
+        assert!(get_min_reserve_asset_decimals() == MIN_RESERVE_ASSET_DECIMALS, SUCCESS);
+    }
+
+    #[test]
+    fun test_get_max_valid_liquidation_grace_period() {
+        assert!(
+            get_max_valid_liquidation_grace_period()
+                == MAX_VALID_LIQUIDATION_GRACE_PERIOD,
+            SUCCESS
+        );
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 65, location = aave_config::reserve_config)]
+    fun test_set_liquidation_bonus_expected_failure() {
+        let reserve_config = init();
+        set_liquidation_bonus(&mut reserve_config, get_max_valid_liquidation_bonus()
+            + 1)
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 68, location = aave_config::reserve_config)]
+    fun test_set_borrow_cap_expected_failure() {
+        let reserve_config = init();
+        set_borrow_cap(&mut reserve_config, get_max_valid_borrow_cap() + 1)
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 69, location = aave_config::reserve_config)]
+    fun test_set_supply_cap_expected_failure() {
+        let reserve_config = init();
+        set_supply_cap(&mut reserve_config, get_max_valid_supply_cap() + 1)
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 73, location = aave_config::reserve_config)]
+    fun test_set_debt_ceiling_expected_failure() {
+        let reserve_config = init();
+        set_debt_ceiling(&mut reserve_config, get_max_valid_debt_ceiling() + 1)
     }
 }

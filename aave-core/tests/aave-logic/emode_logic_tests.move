@@ -1,64 +1,39 @@
 #[test_only]
 module aave_pool::emode_logic_tests {
-    use std::features::change_feature_flags_for_testing;
     use std::option::Self;
     use std::signer;
-    use std::string::{String, utf8};
+    use std::string::utf8;
     use std::vector;
-    use aptos_std::string_utils;
-    use aptos_framework::account;
     use aptos_framework::event::emitted_events;
-    use aave_acl::acl_manage;
-    use aave_math::wad_ray_math;
-    use aave_rate::default_reserve_interest_rate_strategy;
-    use aave_rate::interest_rate_strategy;
-    use aave_pool::a_token_factory;
-    use aave_pool::collector;
+    use aptos_framework::timestamp;
+    use aave_pool::pool_data_provider;
+    use aave_pool::token_helper;
     use aave_pool::emode_logic::{
         configure_emode_category,
         get_emode_category_data,
         get_emode_category_liquidation_bonus,
         get_emode_category_liquidation_threshold,
-        get_emode_category_price_source,
         get_emode_configuration,
         get_user_emode,
         init_emode,
         is_in_emode_category,
         set_user_emode,
-        UserEModeSet
+        UserEModeSet,
+        get_emode_e_mode_liquidation_bonus,
+        get_emode_e_mode_label,
+        get_emode_category_ltv,
+        get_emode_category_label
     };
-    use aave_pool::mock_underlying_token_factory;
+    use aave_mock_underlyings::mock_underlying_token_factory;
+    use aave_pool::borrow_logic;
+    use aave_pool::supply_logic;
+    use aave_pool::token_helper::{init_reserves_with_oracle, convert_to_currency_decimals};
     use aave_pool::pool::{get_reserve_data, get_reserve_id};
     use aave_pool::pool_configurator;
     use aave_pool::pool_tests::create_user_config_for_reserve;
-    use aave_pool::token_base;
-    use aave_pool::variable_debt_token_factory;
 
     const TEST_SUCCESS: u64 = 1;
     const TEST_FAILED: u64 = 2;
-
-    #[test(pool = @aave_pool)]
-    #[expected_failure(abort_code = 16)]
-    fun zero_emode_id_failure(pool: &signer) {
-        // init the emode
-        init_emode(pool);
-
-        // configure an illegal emode category
-        let id: u8 = 0;
-        let ltv: u16 = 100;
-        let liquidation_threshold: u16 = 200;
-        let liquidation_bonus: u16 = 300;
-        let price_source: address = @0x01;
-        let label = utf8(b"MODE1");
-        configure_emode_category(
-            id,
-            ltv,
-            liquidation_threshold,
-            liquidation_bonus,
-            price_source,
-            label
-        );
-    }
 
     #[test(pool = @aave_pool)]
     fun get_nonexisting_emode_category(pool: &signer) {
@@ -67,29 +42,13 @@ module aave_pool::emode_logic_tests {
 
         // get an non-existing emode category
         let id: u8 = 3;
-        let (ltv, liquidation_threshold, emode_asset_price) = get_emode_configuration(id);
+        let (ltv, liquidation_threshold) = get_emode_configuration(id);
         assert!(ltv == 0, TEST_SUCCESS);
         assert!(liquidation_threshold == 0, TEST_SUCCESS);
-        assert!(emode_asset_price == 0, TEST_SUCCESS);
     }
 
-    #[
-        test(
-            aave_pool = @aave_pool,
-            aave_oracle = @aave_oracle,
-            publisher = @data_feeds,
-            platform = @platform
-        )
-    ]
-    fun test_emode_config(
-        aave_pool: &signer,
-        aave_oracle: &signer,
-        publisher: &signer,
-        platform: &signer
-    ) {
-        // init the oracle module
-        aave_oracle::oracle_tests::config_oracle(aave_oracle, publisher, platform);
-
+    #[test(aave_pool = @aave_pool)]
+    fun test_emode_config(aave_pool: &signer) {
         // init the emode
         init_emode(aave_pool);
 
@@ -98,14 +57,12 @@ module aave_pool::emode_logic_tests {
         let ltv1: u16 = 100;
         let liquidation_threshold1: u16 = 200;
         let liquidation_bonus1: u16 = 300;
-        let price_source1: address = signer::address_of(aave_oracle);
         let label1 = utf8(b"MODE1");
         configure_emode_category(
             id1,
             ltv1,
             liquidation_threshold1,
             liquidation_bonus1,
-            price_source1,
             label1
         );
         let emode_data1 = get_emode_category_data(id1);
@@ -118,9 +75,7 @@ module aave_pool::emode_logic_tests {
                 == liquidation_threshold1,
             TEST_SUCCESS
         );
-        assert!(get_emode_category_price_source(&emode_data1) == @0x0, TEST_SUCCESS);
-        let (ltv, liquidation_threshold, _emode_asset_price) =
-            get_emode_configuration(id1);
+        let (ltv, liquidation_threshold) = get_emode_configuration(id1);
         assert!(ltv == (ltv1 as u256), TEST_SUCCESS);
         assert!(liquidation_threshold == (liquidation_threshold1 as u256), TEST_SUCCESS);
 
@@ -128,14 +83,12 @@ module aave_pool::emode_logic_tests {
         let ltv2: u16 = 101;
         let liquidation_threshold2: u16 = 201;
         let liquidation_bonus2: u16 = 301;
-        let price_source2: address = signer::address_of(aave_oracle);
         let label2 = utf8(b"MODE2");
         configure_emode_category(
             id2,
             ltv2,
             liquidation_threshold2,
             liquidation_bonus2,
-            price_source2,
             label2
         );
         let emode_data2 = get_emode_category_data(id2);
@@ -148,9 +101,7 @@ module aave_pool::emode_logic_tests {
                 == liquidation_threshold2,
             TEST_SUCCESS
         );
-        assert!(get_emode_category_price_source(&emode_data2) == @0x0, TEST_SUCCESS);
-        let (ltv, liquidation_threshold, _emode_asset_price) =
-            get_emode_configuration(id2);
+        let (ltv, liquidation_threshold) = get_emode_configuration(id2);
         assert!(ltv == (ltv2 as u256), TEST_SUCCESS);
         assert!(liquidation_threshold == (liquidation_threshold2 as u256), TEST_SUCCESS);
     }
@@ -158,154 +109,63 @@ module aave_pool::emode_logic_tests {
     #[
         test(
             aave_pool = @aave_pool,
-            aave_rate = @aave_rate,
             aave_role_super_admin = @aave_acl,
             aave_std = @std,
             aave_oracle = @aave_oracle,
-            publisher = @data_feeds,
+            data_feeds = @data_feeds,
             platform = @platform,
-            underlying_tokens_admin = @underlying_tokens,
+            underlying_tokens_admin = @aave_mock_underlyings,
             user = @0x042
         )
     ]
     fun test_legitimate_user_emode(
         aave_pool: &signer,
-        aave_rate: &signer,
         aave_role_super_admin: &signer,
         aave_std: &signer,
         aave_oracle: &signer,
-        publisher: &signer,
+        data_feeds: &signer,
         platform: &signer,
         underlying_tokens_admin: &signer,
         user: &signer
     ) {
-        // add the test events feature flag
-        change_feature_flags_for_testing(aave_std, vector[26], vector[]);
-
-        // create test accounts
-        account::create_account_for_test(signer::address_of(aave_pool));
-
-        // init the acl module and make aave_pool the asset listing/pool admin
-        acl_manage::test_init_module(aave_role_super_admin);
-        acl_manage::add_asset_listing_admin(aave_role_super_admin, @aave_pool);
-        acl_manage::add_pool_admin(aave_role_super_admin, @aave_pool);
-
-        // init collector
-        collector::init_module_test(aave_pool);
-        let collector_address = collector::collector_address();
-
-        // init token base (a tokens and var tokens)
-        token_base::test_init_module(aave_pool);
-
-        // init a token factory
-        a_token_factory::test_init_module(aave_pool);
-
-        // init debt token factory
-        variable_debt_token_factory::test_init_module(aave_pool);
-
-        // init underlying tokens
-        mock_underlying_token_factory::test_init_module(aave_pool);
-
-        // init the oracle module
-        aave_oracle::oracle_tests::config_oracle(aave_oracle, publisher, platform);
-
-        // init pool_configurator & reserves module
-        pool_configurator::test_init_module(aave_pool);
-
-        // init rate
-        interest_rate_strategy::test_init_module(aave_rate);
-
-        // init input data for creating pool reserves
-        let treasuries: vector<address> = vector[];
-
-        // create underlyings
-        let underlying_assets: vector<address> = vector[];
-        let underlying_asset_decimals: vector<u8> = vector[];
-        let atokens_names: vector<String> = vector[];
-        let atokens_symbols: vector<String> = vector[];
-        let var_tokens_names: vector<String> = vector[];
-        let var_tokens_symbols: vector<String> = vector[];
-        let num_assets = 3;
-        for (i in 0..num_assets) {
-            let name = string_utils::format1(&b"APTOS_UNDERLYING_{}", i);
-            let symbol = string_utils::format1(&b"U_{}", i);
-            let decimals = 2 + i;
-            let max_supply = 10000;
-
-            // create the underlying token
-            mock_underlying_token_factory::create_token(
-                underlying_tokens_admin,
-                max_supply,
-                name,
-                symbol,
-                decimals,
-                utf8(b""),
-                utf8(b"")
-            );
-
-            let underlying_token_address =
-                mock_underlying_token_factory::token_address(symbol);
-
-            // init the default interest rate strategy for the underlying_token_address
-            let optimal_usage_ratio: u256 = wad_ray_math::get_half_ray_for_testing();
-            let base_variable_borrow_rate: u256 = 0;
-            let variable_rate_slope1: u256 = 0;
-            let variable_rate_slope2: u256 = 0;
-            default_reserve_interest_rate_strategy::set_reserve_interest_rate_strategy(
-                aave_pool,
-                underlying_token_address,
-                optimal_usage_ratio,
-                base_variable_borrow_rate,
-                variable_rate_slope1,
-                variable_rate_slope2
-            );
-
-            // prepare a and var tokens
-            vector::push_back(&mut underlying_assets, underlying_token_address);
-            vector::push_back(&mut underlying_asset_decimals, decimals);
-            vector::push_back(&mut treasuries, collector_address);
-            vector::push_back(
-                &mut atokens_names, string_utils::format1(&b"APTOS_A_TOKEN_{}", i)
-            );
-            vector::push_back(&mut atokens_symbols, string_utils::format1(&b"A_{}", i));
-            vector::push_back(
-                &mut var_tokens_names, string_utils::format1(&b"APTOS_VAR_TOKEN_{}", i)
-            );
-            vector::push_back(
-                &mut var_tokens_symbols, string_utils::format1(&b"V_{}", i)
-            );
-        };
-
-        // create pool reserves
-        pool_configurator::init_reserves(
+        token_helper::init_reserves_with_oracle(
             aave_pool,
-            underlying_assets,
-            treasuries,
-            atokens_names,
-            atokens_symbols,
-            var_tokens_names,
-            var_tokens_symbols
+            aave_role_super_admin,
+            aave_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
         );
 
         // define an emode cat for reserve and user
         let emode_cat_id: u8 = 1;
         // configure an emode category
-        let ltv: u16 = 100;
-        let liquidation_threshold: u16 = 200;
-        let liquidation_bonus: u16 = 300;
-        let price_source: address = signer::address_of(aave_oracle);
+        let ltv: u16 = 8800;
+        let liquidation_threshold: u16 = 9000;
+        let liquidation_bonus: u16 = 10100;
         let label = utf8(b"MODE1");
         configure_emode_category(
             emode_cat_id,
             ltv,
             liquidation_threshold,
             liquidation_bonus,
-            price_source,
             label
         );
 
         // get the reserve config
-        let underlying_asset_addr = *vector::borrow(&underlying_assets, 0);
+        let underlying_asset_addr =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+
+        // set asset price for U_1
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_asset_addr,
+            100
+        );
+
         let reserve_data = get_reserve_data(underlying_asset_addr);
         pool_configurator::set_asset_emode_category(
             aave_pool, underlying_asset_addr, emode_cat_id
@@ -314,7 +174,7 @@ module aave_pool::emode_logic_tests {
         // init user config for reserve index
         create_user_config_for_reserve(
             signer::address_of(user),
-            (get_reserve_id(&reserve_data) as u256),
+            (get_reserve_id(reserve_data) as u256),
             option::some(true),
             option::some(true)
         );
@@ -324,12 +184,9 @@ module aave_pool::emode_logic_tests {
 
         // get and assert user emode
         let user_emode = get_user_emode(signer::address_of(user));
-        assert!(user_emode == (emode_cat_id as u256), TEST_SUCCESS);
-
-        assert!(is_in_emode_category(user_emode, (emode_cat_id as u256)), TEST_SUCCESS);
-        assert!(
-            !is_in_emode_category(user_emode, (emode_cat_id + 1 as u256)), TEST_SUCCESS
-        );
+        assert!(user_emode == emode_cat_id, TEST_SUCCESS);
+        assert!(is_in_emode_category(user_emode, emode_cat_id), TEST_SUCCESS);
+        assert!(!is_in_emode_category(user_emode, emode_cat_id + 1), TEST_SUCCESS);
 
         // check emitted events
         let emitted_events = emitted_events<UserEModeSet>();
@@ -340,153 +197,138 @@ module aave_pool::emode_logic_tests {
     #[
         test(
             aave_pool = @aave_pool,
-            aave_rate = @aave_rate,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings
+        )
+    ]
+    // Admin adds a category for stablecoins with U_1
+    fun test_set_emode_category_for_reserve(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer
+    ) {
+        // init reserves
+        token_helper::init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        let new_category_id = 1;
+        let ltv = 8800;
+        let liquidation_threshold = 9800;
+        let liquidation_bonus = 10100;
+        let label = utf8(b"MODE1");
+        assert!(get_emode_e_mode_liquidation_bonus(new_category_id) == 0, TEST_SUCCESS);
+        assert!(get_emode_e_mode_label(new_category_id) == utf8(b""), TEST_SUCCESS);
+
+        pool_configurator::set_emode_category(
+            aave_pool,
+            new_category_id,
+            ltv,
+            liquidation_threshold,
+            liquidation_bonus,
+            label
+        );
+
+        pool_configurator::set_asset_emode_category(
+            aave_pool,
+            underlying_u1_token_address,
+            new_category_id
+        );
+
+        let emode_category_id =
+            pool_data_provider::get_reserve_emode_category(underlying_u1_token_address);
+
+        assert!(emode_category_id == (new_category_id as u256), TEST_SUCCESS);
+
+        let emode_category = get_emode_category_data(new_category_id);
+        assert!(get_emode_category_ltv(&emode_category) == ltv, TEST_SUCCESS);
+        assert!(
+            get_emode_category_liquidation_threshold(&emode_category)
+                == liquidation_threshold,
+            TEST_SUCCESS
+        );
+        assert!(
+            get_emode_category_liquidation_bonus(&emode_category) == liquidation_bonus,
+            TEST_SUCCESS
+        );
+        assert!(
+            get_emode_e_mode_liquidation_bonus(new_category_id) == liquidation_bonus,
+            TEST_SUCCESS
+        );
+        assert!(
+            get_emode_category_label(&emode_category) == label,
+            TEST_SUCCESS
+        );
+        assert!(get_emode_e_mode_label(new_category_id) == label, TEST_SUCCESS);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
             aave_role_super_admin = @aave_acl,
             aave_std = @std,
             aave_oracle = @aave_oracle,
-            publisher = @data_feeds,
+            data_feeds = @data_feeds,
             platform = @platform,
-            underlying_tokens_admin = @underlying_tokens,
+            underlying_tokens_admin = @aave_mock_underlyings,
             user = @0x042
         )
     ]
-    #[expected_failure(abort_code = 58)]
-    fun test_user_emode_with_non_existing_user_emode(
+    fun test_set_user_emode_with_multiple_settings(
         aave_pool: &signer,
-        aave_rate: &signer,
         aave_role_super_admin: &signer,
         aave_std: &signer,
         aave_oracle: &signer,
-        publisher: &signer,
+        data_feeds: &signer,
         platform: &signer,
         underlying_tokens_admin: &signer,
         user: &signer
     ) {
-        // add the test events feature flag
-        change_feature_flags_for_testing(aave_std, vector[26], vector[]);
-
-        // create test accounts
-        account::create_account_for_test(signer::address_of(aave_pool));
-
-        // init the acl module and make aave_pool the asset listing/pool admin
-        acl_manage::test_init_module(aave_role_super_admin);
-        acl_manage::add_asset_listing_admin(aave_role_super_admin, @aave_pool);
-        acl_manage::add_pool_admin(aave_role_super_admin, @aave_pool);
-
-        // init collector
-        collector::init_module_test(aave_pool);
-        let collector_address = collector::collector_address();
-
-        // init token base (a tokens and var tokens)
-        token_base::test_init_module(aave_pool);
-
-        // init a token factory
-        a_token_factory::test_init_module(aave_pool);
-
-        // init debt token factory
-        variable_debt_token_factory::test_init_module(aave_pool);
-
-        // init underlying tokens
-        mock_underlying_token_factory::test_init_module(aave_pool);
-
-        // init the oracle module
-        aave_oracle::oracle_tests::config_oracle(aave_oracle, publisher, platform);
-
-        // init pool_configurator & reserves module
-        pool_configurator::test_init_module(aave_pool);
-
-        // init rate
-        interest_rate_strategy::test_init_module(aave_rate);
-
-        // init input data for creating pool reserves
-        let treasuries: vector<address> = vector[];
-
-        // create underlyings
-        let underlying_assets: vector<address> = vector[];
-        let underlying_asset_decimals: vector<u8> = vector[];
-        let atokens_names: vector<String> = vector[];
-        let atokens_symbols: vector<String> = vector[];
-        let var_tokens_names: vector<String> = vector[];
-        let var_tokens_symbols: vector<String> = vector[];
-        let num_assets = 3;
-        for (i in 0..num_assets) {
-            let name = string_utils::format1(&b"APTOS_UNDERLYING_{}", i);
-            let symbol = string_utils::format1(&b"U_{}", i);
-            let decimals = 2 + i;
-            let max_supply = 10000;
-            mock_underlying_token_factory::create_token(
-                underlying_tokens_admin,
-                max_supply,
-                name,
-                symbol,
-                decimals,
-                utf8(b""),
-                utf8(b"")
-            );
-
-            let underlying_token_address =
-                mock_underlying_token_factory::token_address(symbol);
-
-            // init the default interest rate strategy for the underlying_token_address
-            let optimal_usage_ratio: u256 = wad_ray_math::get_half_ray_for_testing();
-            let base_variable_borrow_rate: u256 = 0;
-            let variable_rate_slope1: u256 = 0;
-            let variable_rate_slope2: u256 = 0;
-            default_reserve_interest_rate_strategy::set_reserve_interest_rate_strategy(
-                aave_pool,
-                underlying_token_address,
-                optimal_usage_ratio,
-                base_variable_borrow_rate,
-                variable_rate_slope1,
-                variable_rate_slope2
-            );
-
-            // prep a and var tokens
-            vector::push_back(&mut underlying_assets, underlying_token_address);
-            vector::push_back(&mut underlying_asset_decimals, decimals);
-            vector::push_back(&mut treasuries, collector_address);
-            vector::push_back(
-                &mut atokens_names, string_utils::format1(&b"APTOS_A_TOKEN_{}", i)
-            );
-            vector::push_back(&mut atokens_symbols, string_utils::format1(&b"A_{}", i));
-            vector::push_back(
-                &mut var_tokens_names, string_utils::format1(&b"APTOS_VAR_TOKEN_{}", i)
-            );
-            vector::push_back(
-                &mut var_tokens_symbols, string_utils::format1(&b"V_{}", i)
-            );
-        };
-
-        // create pool reserves
-        pool_configurator::init_reserves(
+        token_helper::init_reserves_with_oracle(
             aave_pool,
-            underlying_assets,
-            treasuries,
-            atokens_names,
-            atokens_symbols,
-            var_tokens_names,
-            var_tokens_symbols
+            aave_role_super_admin,
+            aave_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
         );
 
         // define an emode cat for reserve and user
         let emode_cat_id: u8 = 1;
         // configure an emode category
-        let ltv: u16 = 100;
-        let liquidation_threshold: u16 = 200;
-        let liquidation_bonus: u16 = 300;
-        let price_source: address = signer::address_of(aave_oracle);
+        let ltv: u16 = 8800;
+        let liquidation_threshold: u16 = 9000;
+        let liquidation_bonus: u16 = 10100;
         let label = utf8(b"MODE1");
         configure_emode_category(
             emode_cat_id,
             ltv,
             liquidation_threshold,
             liquidation_bonus,
-            price_source,
             label
         );
 
         // get the reserve config
-        let underlying_asset_addr = *vector::borrow(&underlying_assets, 0);
+        let underlying_asset_addr =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+
+        // set asset price for U_1
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_asset_addr,
+            100
+        );
+
         let reserve_data = get_reserve_data(underlying_asset_addr);
         pool_configurator::set_asset_emode_category(
             aave_pool, underlying_asset_addr, emode_cat_id
@@ -495,7 +337,128 @@ module aave_pool::emode_logic_tests {
         // init user config for reserve index
         create_user_config_for_reserve(
             signer::address_of(user),
-            (get_reserve_id(&reserve_data) as u256),
+            (get_reserve_id(reserve_data) as u256),
+            option::some(true),
+            option::some(true)
+        );
+
+        // set user emode
+        set_user_emode(user, emode_cat_id);
+
+        // get and assert user emode
+        let user_emode = get_user_emode(signer::address_of(user));
+        assert!(user_emode == emode_cat_id, TEST_SUCCESS);
+        assert!(is_in_emode_category(user_emode, emode_cat_id), TEST_SUCCESS);
+        assert!(!is_in_emode_category(user_emode, emode_cat_id + 1), TEST_SUCCESS);
+
+        // check emitted events
+        let emitted_events = emitted_events<UserEModeSet>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
+
+        // set user emode again
+        set_user_emode(user, emode_cat_id);
+        // get and assert user emode
+        let user_emode = get_user_emode(signer::address_of(user));
+        assert!(user_emode == emode_cat_id, TEST_SUCCESS);
+        assert!(is_in_emode_category(user_emode, emode_cat_id), TEST_SUCCESS);
+        assert!(!is_in_emode_category(user_emode, emode_cat_id + 1), TEST_SUCCESS);
+
+        // check emitted events
+        let emitted_events = emitted_events<UserEModeSet>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
+    }
+
+    // =================== Test Expected Failure ===================
+    #[test(user1 = @0x41)]
+    #[expected_failure(abort_code = 1401, location = aave_pool::emode_logic)]
+    fun test_init_emode_with_not_pool_owner(user1: &signer) {
+        init_emode(user1);
+    }
+
+    #[test(pool = @aave_pool)]
+    #[expected_failure(abort_code = 16, location = aave_pool::emode_logic)]
+    fun zero_emode_id_failure(pool: &signer) {
+        // init the emode
+        init_emode(pool);
+
+        // configure an illegal emode category
+        let id: u8 = 0;
+        let ltv: u16 = 100;
+        let liquidation_threshold: u16 = 200;
+        let liquidation_bonus: u16 = 300;
+        let label = utf8(b"MODE1");
+        configure_emode_category(
+            id,
+            ltv,
+            liquidation_threshold,
+            liquidation_bonus,
+            label
+        );
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user = @0x042
+        )
+    ]
+    #[expected_failure(abort_code = 58, location = aave_pool::validation_logic)]
+    fun test_user_emode_with_non_existing_user_emode(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        user: &signer
+    ) {
+        token_helper::init_reserves_with_oracle(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
+
+        // define an emode cat for reserve and user
+        let emode_cat_id: u8 = 1;
+        // configure an emode category
+        let ltv: u16 = 8900;
+        let liquidation_threshold: u16 = 9200;
+        let liquidation_bonus: u16 = 10200;
+        let label = utf8(b"MODE1");
+        configure_emode_category(
+            emode_cat_id,
+            ltv,
+            liquidation_threshold,
+            liquidation_bonus,
+            label
+        );
+
+        // get the reserve config
+        let underlying_asset_addr =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        let reserve_data = get_reserve_data(underlying_asset_addr);
+        pool_configurator::set_asset_emode_category(
+            aave_pool, underlying_asset_addr, emode_cat_id
+        );
+
+        // init user config for reserve index
+        create_user_config_for_reserve(
+            signer::address_of(user),
+            (get_reserve_id(reserve_data) as u256),
             option::some(true),
             option::some(true)
         );
@@ -503,5 +466,221 @@ module aave_pool::emode_logic_tests {
         // set user emode
         let non_existing_emode_id = emode_cat_id + 1;
         set_user_emode(user, non_existing_emode_id);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            user0 = @0x41,
+            user1 = @0x42,
+            user2 = @0x43
+        )
+    ]
+    // User 0 mint 1000 U_0, 1000 U_1, 1000 U_2
+    // User 1 mint 1000 U_1, 1000 U_2
+    // User 2 mint 1000 U_0
+    // Admin adds a category for U_0 and U_1
+    // Admin adds a category for U_2
+    // User 0 activates eMode for category
+    // User 0 supplies 100 U_0, user 1 supplies 100 U_2
+    // User 0 borrows 98 U_1
+    // User 0 tries to activate eMode for other category (revert expected)
+    #[expected_failure(abort_code = 58, location = aave_pool::validation_logic)]
+    fun test_set_user_emode_when_inconsistent_emode_category(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        underlying_tokens_admin: &signer,
+        user0: &signer,
+        user1: &signer,
+        user2: &signer
+    ) {
+        // create users
+        let user0_address = signer::address_of(user0);
+        let user1_address = signer::address_of(user1);
+        let user2_address = signer::address_of(user2);
+
+        init_reserves_with_oracle(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            aave_oracle,
+            data_feeds,
+            platform,
+            underlying_tokens_admin,
+            aave_pool
+        );
+        let underlying_u0_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_0"));
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+        let underlying_u2_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_2"));
+
+        // mint 1000 U_0 for user 0
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user0_address,
+            (convert_to_currency_decimals(underlying_u0_token_address, 1000) as u64),
+            underlying_u0_token_address
+        );
+
+        // mint 1000 U_1 for user 0
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user0_address,
+            (convert_to_currency_decimals(underlying_u1_token_address, 1000) as u64),
+            underlying_u1_token_address
+        );
+
+        // mint 1000 U_2 for user 0
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user0_address,
+            (convert_to_currency_decimals(underlying_u2_token_address, 1000) as u64),
+            underlying_u2_token_address
+        );
+
+        // mint 1000 U_1 for user 1
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (convert_to_currency_decimals(underlying_u1_token_address, 1000) as u64),
+            underlying_u1_token_address
+        );
+
+        // mint 1000 U_2 for user 1
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (convert_to_currency_decimals(underlying_u2_token_address, 1000) as u64),
+            underlying_u2_token_address
+        );
+
+        // mint 1000 U_0 for user 2
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user2_address,
+            (convert_to_currency_decimals(underlying_u0_token_address, 1000) as u64),
+            underlying_u0_token_address
+        );
+
+        // Add a category for U_0 and U_1
+        let new_category_id = 1;
+        let ltv = 9800;
+        let liquidation_threshold = 9800;
+        let liquidation_bonus = 10100;
+        let label = utf8(b"STABLECOINS");
+        pool_configurator::set_emode_category(
+            aave_pool,
+            new_category_id,
+            ltv,
+            liquidation_threshold,
+            liquidation_bonus,
+            label
+        );
+
+        pool_configurator::set_asset_emode_category(
+            aave_pool,
+            underlying_u0_token_address,
+            new_category_id
+        );
+
+        pool_configurator::set_asset_emode_category(
+            aave_pool,
+            underlying_u1_token_address,
+            new_category_id
+        );
+
+        // User 0 activates eMode for category
+        set_user_emode(user0, new_category_id);
+
+        // Add a category for U_2
+        let new_category_id_2 = 2;
+        let ltv_2 = 9800;
+        let liquidation_threshold_2 = 9800;
+        let liquidation_bonus_2 = 10100;
+        let label_2 = utf8(b"STABLECOINS");
+        pool_configurator::set_emode_category(
+            aave_pool,
+            new_category_id_2,
+            ltv_2,
+            liquidation_threshold_2,
+            liquidation_bonus_2,
+            label_2
+        );
+
+        pool_configurator::set_asset_emode_category(
+            aave_pool,
+            underlying_u2_token_address,
+            new_category_id_2
+        );
+
+        // User 0 supplies 100 U_0
+        supply_logic::supply(
+            user0,
+            underlying_u0_token_address,
+            convert_to_currency_decimals(underlying_u0_token_address, 100),
+            user0_address,
+            0
+        );
+
+        // User 1 supplies 100 U_1
+        supply_logic::supply(
+            user1,
+            underlying_u1_token_address,
+            convert_to_currency_decimals(underlying_u1_token_address, 100),
+            user1_address,
+            0
+        );
+
+        // set asset price for U_0
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u0_token_address,
+            10
+        );
+
+        // set asset price for U_1
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u1_token_address,
+            10
+        );
+
+        // set asset price for U_2
+        token_helper::set_asset_price(
+            aave_role_super_admin,
+            aave_oracle,
+            underlying_u2_token_address,
+            10
+        );
+
+        // set global time
+        timestamp::update_global_time_for_test_secs(1000);
+
+        // User 0 borrows 98 U_1 and tries to deactivate eMode (revert expected)
+        borrow_logic::borrow(
+            user0,
+            underlying_u1_token_address,
+            convert_to_currency_decimals(underlying_u1_token_address, 98),
+            2,
+            0,
+            user0_address
+        );
+
+        // User 0 tries to activate eMode for other category (revert expected)
+        set_user_emode(user0, new_category_id_2);
     }
 }

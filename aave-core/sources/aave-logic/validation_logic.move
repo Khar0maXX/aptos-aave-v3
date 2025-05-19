@@ -1,28 +1,31 @@
+/// @title Validation Logic Module
+/// @author Aave
+/// @notice Implements the validation logic for the various actions of the protocol
 module aave_pool::validation_logic {
-    use std::string;
+    // imports
     use std::vector;
-
-    use aave_acl::acl_manage;
+    use aptos_framework::timestamp;
+    use aptos_framework::object::Object;
     use aave_config::error_config;
     use aave_config::reserve_config::{Self, ReserveConfigurationMap};
     use aave_config::user_config::{Self, UserConfigurationMap};
     use aave_math::math_utils;
     use aave_math::wad_ray_math;
     use aave_oracle::oracle;
+    use aave_pool::pool_logic;
+    use aave_pool::pool_logic::ReserveCache;
 
     use aave_pool::a_token_factory;
     use aave_pool::generic_logic;
-    use aave_pool::pool::{Self, ReserveCache, ReserveData};
+    use aave_pool::pool::{Self, ReserveData};
 
+    // Public validation functions
     /// @notice Validates a flashloan action.
-    /// @param reserves_data The data of all the reserves
     /// @param assets The assets being flash-borrowed
     /// @param amounts The amounts for each asset being borrowed
+    /// @param interest_rate_modes The interest rate modes for each asset
     public fun validate_flashloan_complex(
-        reserves_data: &vector<ReserveData>,
-        assets: &vector<address>,
-        amounts: &vector<u256>,
-        interest_rate_modes: &vector<u8>
+        assets: &vector<address>, amounts: &vector<u256>, interest_rate_modes: &vector<u8>
     ) {
         assert!(
             vector::length(assets) == vector::length(amounts)
@@ -30,13 +33,26 @@ module aave_pool::validation_logic {
             error_config::get_einconsistent_flashloan_params()
         );
         for (i in 0..vector::length(assets)) {
-            validate_flashloan_simple(vector::borrow(reserves_data, i));
+            let asset = *vector::borrow(assets, i);
+            for (j in (i + 1)..vector::length(assets)) {
+                let asset_j = *vector::borrow(assets, j);
+                assert!(
+                    asset != asset_j,
+                    error_config::get_einconsistent_flashloan_params()
+                );
+            };
+            let reserve_data = pool::get_reserve_data(asset);
+            let amount = *vector::borrow(amounts, i);
+            validate_flashloan_simple(reserve_data, amount);
         }
     }
 
     /// @notice Validates a flashloan action.
     /// @param reserve_data The reserve data the reserve
-    public fun validate_flashloan_simple(reserve_data: &ReserveData) {
+    /// @param amount The amount being flash-borrowed
+    public fun validate_flashloan_simple(
+        reserve_data: Object<ReserveData>, amount: u256
+    ) {
         let reserve_configuration =
             pool::get_reserve_configuration_by_reserve_data(reserve_data);
         let (is_active, _, _, is_paused) =
@@ -46,19 +62,28 @@ module aave_pool::validation_logic {
         let is_flashloan_enabled =
             reserve_config::get_flash_loan_enabled(&reserve_configuration);
         assert!(is_flashloan_enabled, error_config::get_eflashloan_disabled());
+
+        let a_token_total_supply =
+            a_token_factory::total_supply(pool::get_reserve_a_token_address(reserve_data));
+
+        assert!(a_token_total_supply >= amount, error_config::get_einvalid_amount());
     }
 
     /// @notice Validates a supply action.
     /// @param reserve_cache The reserve cache of the reserve
     /// @param reserve_data The reserve data of the reserve
     /// @param amount The amount to be supplied
+    /// @param on_behalf_of The account on which behalf the amount is being supplied
     public fun validate_supply(
-        reserve_cache: &ReserveCache, reserve_data: &ReserveData, amount: u256
+        reserve_cache: &ReserveCache,
+        reserve_data: Object<ReserveData>,
+        amount: u256,
+        on_behalf_of: address
     ) {
         assert!(amount != 0, error_config::get_einvalid_amount());
 
         let reserve_configuration_map =
-            pool::get_reserve_cache_configuration(reserve_cache);
+            pool_logic::get_reserve_cache_configuration(reserve_cache);
         let (is_active, is_frozen, _, is_paused) =
             reserve_config::get_flags(&reserve_configuration_map);
 
@@ -66,11 +91,17 @@ module aave_pool::validation_logic {
         assert!(!is_paused, error_config::get_ereserve_paused());
         assert!(!is_frozen, error_config::get_ereserve_frozen());
 
+        let a_token_address = pool_logic::get_a_token_address(reserve_cache);
+        let a_token_resource_account =
+            a_token_factory::get_token_account_address(a_token_address);
+        assert!(
+            on_behalf_of != a_token_resource_account,
+            error_config::get_esupply_to_atoken()
+        );
+
         let supply_cap = reserve_config::get_supply_cap(&reserve_configuration_map);
         let a_token_scaled_total_supply =
-            a_token_factory::scaled_total_supply(
-                pool::get_a_token_address(reserve_cache)
-            );
+            a_token_factory::scaled_total_supply(a_token_address);
 
         let total_supply_liquidity =
             wad_ray_math::ray_mul(
@@ -78,7 +109,7 @@ module aave_pool::validation_logic {
                     a_token_scaled_total_supply
                         + pool::get_reserve_accrued_to_treasury(reserve_data)
                 ),
-                pool::get_next_liquidity_index(reserve_cache)
+                pool_logic::get_next_liquidity_index(reserve_cache)
             );
 
         let total_supply = total_supply_liquidity + amount;
@@ -111,7 +142,7 @@ module aave_pool::validation_logic {
         );
 
         let reserve_configuration_map =
-            pool::get_reserve_cache_configuration(reserve_cache);
+            pool_logic::get_reserve_cache_configuration(reserve_cache);
         let (is_active, _, _, is_paused) =
             reserve_config::get_flags(&reserve_configuration_map);
         assert!(is_active, error_config::get_ereserve_inactive());
@@ -120,7 +151,7 @@ module aave_pool::validation_logic {
 
     /// @notice Validates a transfer action.
     /// @param reserve_data The reserve data the reserve
-    public fun validate_transfer(reserve_data: &ReserveData) {
+    public fun validate_transfer(reserve_data: Object<ReserveData>) {
         let reserve_config_map =
             pool::get_reserve_configuration_by_reserve_data(reserve_data);
         assert!(
@@ -132,67 +163,31 @@ module aave_pool::validation_logic {
     /// @notice Validates the action of setting an asset as collateral.
     /// @param reserve_cache The reserve cache of the reserve
     /// @param user_balance The balance of the user
+    /// @param is_collateral Indicates whether the asset is currently used as collateral in the user config
+    /// @param use_as_collateral True if the user wants to use the supply as collateral, false otherwise
     public fun validate_set_use_reserve_as_collateral(
-        reserve_cache: &ReserveCache, user_balance: u256
+        reserve_cache: &ReserveCache,
+        user_balance: u256,
+        is_collateral: bool,
+        use_as_collateral: bool
     ) {
-        assert!(user_balance != 0, error_config::get_eunderlying_balance_zero());
         let reserve_configuration_map =
-            pool::get_reserve_cache_configuration(reserve_cache);
+            pool_logic::get_reserve_cache_configuration(reserve_cache);
         let (is_active, _, _, is_paused) =
             reserve_config::get_flags(&reserve_configuration_map);
         assert!(is_active, error_config::get_ereserve_inactive());
         assert!(!is_paused, error_config::get_ereserve_paused());
-    }
 
-    /**
-    * ----------------------------
-    * Borrow Validate
-    * ----------------------------
-    */
-    struct ValidateBorrowLocalVars has drop {
-        current_ltv: u256,
-        collateral_needed_in_base_currency: u256,
-        user_collateral_in_base_currency: u256,
-        user_debt_in_base_currency: u256,
-        available_liquidity: u256,
-        health_factor: u256,
-        total_debt: u256,
-        total_supply_variable_debt: u256,
-        reserve_decimals: u256,
-        borrow_cap: u256,
-        amount_in_base_currency: u256,
-        asset_unit: u256,
-        emode_price_source: address,
-        siloed_borrowing_address: address,
-        is_active: bool,
-        is_frozen: bool,
-        is_paused: bool,
-        borrowing_enabled: bool,
-        siloed_borrowing_enabled: bool
-    }
+        // Handle edge case where user with zero balance disables collateral manually
+        //
+        // Allow `validate_set_use_reserve_as_collateral` to succeed if:
+        // 1. collateral is currently enabled,
+        // 2. user balance is 0,
+        // 3. user wants to disable collateral.
+        // This handles rounding errors or logic failures that may leave stale collateral flags.
+        if (is_collateral && !use_as_collateral && user_balance == 0) { return };
 
-    fun create_validate_borrow_local_vars(): ValidateBorrowLocalVars {
-        ValidateBorrowLocalVars {
-            current_ltv: 0,
-            collateral_needed_in_base_currency: 0,
-            user_collateral_in_base_currency: 0,
-            user_debt_in_base_currency: 0,
-            available_liquidity: 0,
-            health_factor: 0,
-            total_debt: 0,
-            total_supply_variable_debt: 0,
-            reserve_decimals: 0,
-            borrow_cap: 0,
-            amount_in_base_currency: 0,
-            asset_unit: 0,
-            emode_price_source: @0x0,
-            siloed_borrowing_address: @0x0,
-            is_active: false,
-            is_frozen: false,
-            is_paused: false,
-            borrowing_enabled: false,
-            siloed_borrowing_enabled: false
-        }
+        assert!(user_balance != 0, error_config::get_eunderlying_balance_zero());
     }
 
     /// @notice Validates a borrow action.
@@ -206,8 +201,6 @@ module aave_pool::validation_logic {
     /// @param user_emode_category The user's eMode category
     /// @param emode_ltv The eMode LTV
     /// @param emode_liq_threshold The eMode liquidation threshold
-    /// @param emode_asset_price The eMode asset price
-    /// @param emode_source_price The eMode price source
     /// @param isolation_mode_active The isolation mode state
     /// @param isolation_mode_collateral_address The address of the collateral reserve in isolation mode
     /// @param isolation_mode_debt_ceiling The debt ceiling in isolation mode
@@ -222,16 +215,14 @@ module aave_pool::validation_logic {
         user_emode_category: u8,
         emode_ltv: u256,
         emode_liq_threshold: u256,
-        emode_asset_price: u256,
-        emode_source_price: address,
         isolation_mode_active: bool,
         isolation_mode_collateral_address: address,
         isolation_mode_debt_ceiling: u256
     ) {
         assert!(amount != 0, error_config::get_einvalid_amount());
-        let vars = create_validate_borrow_local_vars();
+
         let reserve_configuration_map =
-            pool::get_reserve_cache_configuration(reserve_cache);
+            pool_logic::get_reserve_cache_configuration(reserve_cache);
 
         let (is_active, is_frozen, borrowing_enabled, is_paused) =
             reserve_config::get_flags(&reserve_configuration_map);
@@ -241,22 +232,31 @@ module aave_pool::validation_logic {
         assert!(!is_frozen, error_config::get_ereserve_frozen());
         assert!(borrowing_enabled, error_config::get_eborrowing_not_enabled());
 
+        let a_token_total_supply =
+            a_token_factory::total_supply(pool_logic::get_a_token_address(reserve_cache));
+
+        assert!(
+            a_token_total_supply >= amount,
+            error_config::get_einvalid_amount()
+        );
+
         // validate interest rate mode
         assert!(
             interest_rate_mode == user_config::get_interest_rate_mode_variable(),
             error_config::get_einvalid_interest_rate_mode_selected()
         );
-        vars.reserve_decimals = reserve_config::get_decimals(&reserve_configuration_map);
-        vars.borrow_cap = reserve_config::get_borrow_cap(&reserve_configuration_map);
-        vars.asset_unit = math_utils::pow(10, vars.reserve_decimals);
-        if (vars.borrow_cap != 0) {
-            vars.total_supply_variable_debt = wad_ray_math::ray_mul(
-                pool::get_curr_scaled_variable_debt(reserve_cache),
-                pool::get_next_variable_borrow_index(reserve_cache)
-            );
-            vars.total_debt = vars.total_supply_variable_debt + amount;
+        let reserve_decimals = reserve_config::get_decimals(&reserve_configuration_map);
+        let borrow_cap = reserve_config::get_borrow_cap(&reserve_configuration_map);
+        let asset_unit = math_utils::pow(10, reserve_decimals);
+        if (borrow_cap != 0) {
+            let total_supply_variable_debt =
+                wad_ray_math::ray_mul(
+                    pool_logic::get_curr_scaled_variable_debt(reserve_cache),
+                    pool_logic::get_next_variable_borrow_index(reserve_cache)
+                );
+            let total_debt = total_supply_variable_debt + amount;
             assert!(
-                vars.total_debt <= vars.borrow_cap * vars.asset_unit,
+                total_debt <= borrow_cap * asset_unit,
                 error_config::get_eborrow_cap_exceeded()
             );
         };
@@ -274,7 +274,7 @@ module aave_pool::validation_logic {
             let isolation_mode_total_debt =
                 (
                     pool::get_reserve_isolation_mode_total_debt(
-                        &mode_collateral_reserve_data
+                        mode_collateral_reserve_data
                     ) as u256
                 );
             let total_debt =
@@ -284,7 +284,7 @@ module aave_pool::validation_logic {
                             / math_utils::pow(
                                 10,
                                 (
-                                    vars.reserve_decimals
+                                    reserve_decimals
                                         - reserve_config::get_debt_ceiling_decimals()
                                 )
                             )
@@ -301,7 +301,6 @@ module aave_pool::validation_logic {
                     == (user_emode_category as u256),
                 error_config::get_einconsistent_emode_category()
             );
-            vars.emode_price_source = emode_source_price;
         };
 
         let (
@@ -318,42 +317,31 @@ module aave_pool::validation_logic {
                 user_address,
                 user_emode_category,
                 emode_ltv,
-                emode_liq_threshold,
-                emode_asset_price
+                emode_liq_threshold
             );
 
-        vars.user_collateral_in_base_currency = user_collateral_in_base_currency;
-        vars.user_debt_in_base_currency = user_debt_in_base_currency;
-        vars.current_ltv = current_ltv;
-        vars.health_factor = health_factor;
-
         assert!(
-            vars.user_collateral_in_base_currency != 0,
+            user_collateral_in_base_currency != 0,
             error_config::get_ecollateral_balance_is_zero()
         );
-        assert!(vars.current_ltv != 0, error_config::get_eltv_validation_failed());
+        assert!(current_ltv != 0, error_config::get_eltv_validation_failed());
         assert!(
-            vars.health_factor > user_config::get_health_factor_liquidation_threshold(),
+            health_factor > user_config::get_health_factor_liquidation_threshold(),
             error_config::get_ehealth_factor_lower_than_liquidation_threshold()
         );
 
-        // Currently, custom oracle is not supported. Only a unified oracle is used. Therefore, the price is obtained by calling the oracle directly with the asset.
-        let asset_address =
-            if (vars.emode_price_source != @0x0) {
-                vars.emode_price_source
-            } else { asset };
-        vars.amount_in_base_currency = oracle::get_asset_price(asset_address) * amount;
-        vars.amount_in_base_currency = vars.amount_in_base_currency / vars.asset_unit;
+        let amount_in_base_currency = oracle::get_asset_price(asset) * amount
+            / asset_unit;
 
         //add the current already borrowed amount to the amount requested to calculate the total collateral needed.
-        vars.collateral_needed_in_base_currency = math_utils::percent_div(
-            (vars.user_debt_in_base_currency + vars.amount_in_base_currency),
-            vars.current_ltv //LTV is calculated in percentage
-        );
+        let collateral_needed_in_base_currency =
+            math_utils::percent_div(
+                (user_debt_in_base_currency + amount_in_base_currency),
+                current_ltv //LTV is calculated in percentage
+            );
 
         assert!(
-            vars.collateral_needed_in_base_currency
-                <= vars.user_collateral_in_base_currency,
+            collateral_needed_in_base_currency <= user_collateral_in_base_currency,
             error_config::get_ecollateral_cannot_cover_new_borrow()
         );
 
@@ -361,12 +349,12 @@ module aave_pool::validation_logic {
             let (siloed_borrowing_enabled, siloed_borrowing_address) =
                 pool::get_siloed_borrowing_state(user_address);
 
-            vars.siloed_borrowing_enabled = siloed_borrowing_enabled;
-            vars.siloed_borrowing_address = siloed_borrowing_address;
+            let siloed_borrowing_enabled = siloed_borrowing_enabled;
+            let siloed_borrowing_address = siloed_borrowing_address;
 
-            if (vars.siloed_borrowing_enabled) {
+            if (siloed_borrowing_enabled) {
                 assert!(
-                    vars.siloed_borrowing_address == asset,
+                    siloed_borrowing_address == asset,
                     error_config::get_esiloed_borrowing_violation()
                 )
             } else {
@@ -398,9 +386,8 @@ module aave_pool::validation_logic {
             amount_sent != math_utils::u256_max() || account_address == on_behalf_of,
             error_config::get_eno_explicit_amount_to_repay_on_behalf()
         );
-        let reserve_configuration = pool::get_reserve_cache_configuration(
-            reserve_cache
-        );
+        let reserve_configuration =
+            pool_logic::get_reserve_cache_configuration(reserve_cache);
         let (is_active, _, _, is_paused) =
             reserve_config::get_flags(&reserve_configuration);
         assert!(is_active, error_config::get_ereserve_inactive());
@@ -415,24 +402,26 @@ module aave_pool::validation_logic {
 
     /// @notice Validates the liquidation action.
     /// @param user_config_map The user configuration mapping
-    /// @param collateral_reserve The reserve data of the collateral
+    /// @param collateral_reserve_data The reserve data of the collateral
+    /// @param debt_reserve_data The reserve data of the debt
     /// @param debt_reserve_cache The reserve cache of the debt reserve
     /// @param total_debt The total debt of the user
     /// @param health_factor The health factor of the user
     public fun validate_liquidation_call(
         user_config_map: &UserConfigurationMap,
-        collateral_reserve: &ReserveData,
+        collateral_reserve_data: Object<ReserveData>,
+        debt_reserve_data: Object<ReserveData>,
         debt_reserve_cache: &ReserveCache,
         total_debt: u256,
         health_factor: u256
     ) {
         let collateral_reserve_config =
-            pool::get_reserve_configuration_by_reserve_data(collateral_reserve);
+            pool::get_reserve_configuration_by_reserve_data(collateral_reserve_data);
         let (collateral_reserve_active, _, _, collateral_reserve_paused) =
             reserve_config::get_flags(&collateral_reserve_config);
 
         let debt_reserve_config =
-            pool::get_reserve_cache_configuration(debt_reserve_cache);
+            pool_logic::get_reserve_cache_configuration(debt_reserve_cache);
         let (principal_reserve_active, _, _, principal_reserve_paused) =
             reserve_config::get_flags(&debt_reserve_config);
 
@@ -445,10 +434,22 @@ module aave_pool::validation_logic {
             error_config::get_ereserve_paused()
         );
 
+        // assert!(
+        //     health_factor
+        //         < user_config::get_minimum_health_factor_liquidation_threshold(),
+        //     error_config::get_ehealth_factor_lower_than_liquidation_threshold()
+        // );
+
+        let collateral_reserve_liquidation_grace_period_until =
+            pool::get_liquidation_grace_period(collateral_reserve_data);
+        let debt_reserve_liquidation_grace_period_until =
+            pool::get_liquidation_grace_period(debt_reserve_data);
+        let current_block_timestamp = timestamp::now_seconds();
         assert!(
-            health_factor
-                < user_config::get_minimum_health_factor_liquidation_threshold(),
-            error_config::get_ehealth_factor_lower_than_liquidation_threshold()
+            collateral_reserve_liquidation_grace_period_until < current_block_timestamp
+                && debt_reserve_liquidation_grace_period_until
+                    < current_block_timestamp,
+            error_config::get_eliquidation_grace_sentinel_check_failed()
         );
 
         assert!(
@@ -456,7 +457,7 @@ module aave_pool::validation_logic {
             error_config::get_ehealth_factor_not_below_threshold()
         );
 
-        let collateral_reserve_id = pool::get_reserve_id(collateral_reserve);
+        let collateral_reserve_id = pool::get_reserve_id(collateral_reserve_data);
         let is_collateral_enabled =
             reserve_config::get_liquidation_threshold(&collateral_reserve_config) != 0
                 && user_config::is_using_as_collateral(
@@ -482,7 +483,6 @@ module aave_pool::validation_logic {
     /// @param user_emode_category The users active efficiency mode category
     /// @param emode_ltv The ltv of the efficiency mode category
     /// @param emode_liq_threshold The liquidation threshold of the efficiency mode category
-    /// @param emode_asset_price The price of the efficiency mode category
     public fun validate_hf_and_ltv(
         user_config_map: &UserConfigurationMap,
         asset: address,
@@ -490,8 +490,7 @@ module aave_pool::validation_logic {
         reserves_count: u256,
         user_emode_category: u8,
         emode_ltv: u256,
-        emode_liq_threshold: u256,
-        emode_asset_price: u256
+        emode_liq_threshold: u256
     ) {
         let reserve_data = pool::get_reserve_data(asset);
         let (_, has_zero_ltv_collateral) =
@@ -501,11 +500,10 @@ module aave_pool::validation_logic {
                 user_emode_category,
                 reserves_count,
                 emode_ltv,
-                emode_liq_threshold,
-                emode_asset_price
+                emode_liq_threshold
             );
         let reserve_configuration_map =
-            pool::get_reserve_configuration_by_reserve_data(&reserve_data);
+            pool::get_reserve_configuration_by_reserve_data(reserve_data);
         assert!(
             !has_zero_ltv_collateral
                 || reserve_config::get_ltv(&reserve_configuration_map) == 0,
@@ -520,20 +518,12 @@ module aave_pool::validation_logic {
     /// @param reserve_config_map The reserve configuration map
     /// @return True if the asset can be activated as collateral, false otherwise
     public fun validate_automatic_use_as_collateral(
-        account_address: address,
         user_config_map: &UserConfigurationMap,
         reserve_config_map: &ReserveConfigurationMap
     ): bool {
         if (reserve_config::get_debt_ceiling(reserve_config_map) != 0) {
-            // ensures only the ISOLATED_COLLATERAL_SUPPLIER_ROLE can enable collateral as side-effect of an action
-            if (!acl_manage::has_role(
-                string::utf8(user_config::get_isolated_collateral_supplier_role()),
-                account_address
-            )) {
-                return false
-            };
+            return false
         };
-
         return validate_use_as_collateral(user_config_map, reserve_config_map)
     }
 
@@ -569,15 +559,14 @@ module aave_pool::validation_logic {
     /// @param reserves_count The number of available reserves
     /// @param emode_ltv The ltv of the efficiency mode category
     /// @param emode_liq_threshold The liquidation threshold of the efficiency mode category
-    /// @param emode_asset_price The price of the efficiency mode category
+    /// @return The health factor and whether the user has a zero-LTV collateral
     public fun validate_health_factor(
         user_config_map: &UserConfigurationMap,
         user: address,
         user_emode_category: u8,
         reserves_count: u256,
         emode_ltv: u256,
-        emode_liq_threshold: u256,
-        emode_asset_price: u256
+        emode_liq_threshold: u256
     ): (u256, bool) {
         let (_, _, _, _, health_factor, has_zero_ltv_collateral) =
             generic_logic::calculate_user_account_data(
@@ -586,8 +575,7 @@ module aave_pool::validation_logic {
                 user,
                 user_emode_category,
                 emode_ltv,
-                emode_liq_threshold,
-                emode_asset_price
+                emode_liq_threshold
             );
 
         assert!(

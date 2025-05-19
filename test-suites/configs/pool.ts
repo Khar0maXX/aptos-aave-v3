@@ -18,21 +18,29 @@ export const PoolManagerAccountAddress = PoolManager.accountAddress.toString();
 // Entry
 export const PoolMintToTreasuryFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::mint_to_treasury`;
 export const PoolResetIsolationModeTotalDebtFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::reset_isolation_mode_total_debt`;
-export const PoolRescueTokensFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::rescue_tokens`;
-export const PoolSetBridgeProtocolFeeFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::set_bridge_protocol_fee`;
 export const PoolSetFlashloanPremiumsFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::set_flashloan_premiums`;
 
 // Pool View
 export const PoolGetRevisionFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_revision`;
 export const PoolGetReserveConfigurationFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_configuration`;
 export const PoolGetReserveDataFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_data`;
-export const PoolGetReservesCountFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserves_count`;
+export const PoolGetReserveConfigurationByReserveData: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_configuration_by_reserve_data`;
+export const PoolGetReserveLiquidityIndex: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_liquidity_index`;
+export const PoolGetReserveCurrentLiquidityRate: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_current_liquidity_rate`;
+export const PoolGetReserveVariableBorrowIndex: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_variable_borrow_index`;
+export const PoolGetReserveCurrentVariableBorrowRate: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_current_variable_borrow_rate`;
+export const PoolGetReserveLastUpdateTimestamp: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_last_update_timestamp`;
+export const PoolGetReserveId: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_id`;
+export const PoolGetReserveATokenAddress: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_a_token_address`;
+export const PoolGetReserveVariableDebtTokenAddress: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_variable_debt_token_address`;
+export const PoolGetReserveAccruedToTreasury: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_accrued_to_treasury`;
+export const PoolGetReserveIsolationModeTotalDebt: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_isolation_mode_total_debt`;
+export const PoolGetReservesCountFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::number_of_active_and_dropped_reserves`;
 export const PoolGetReservesListFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserves_list`;
 export const PoolGetReserveAddressByIdFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_address_by_id`;
 export const PoolGetReserveNormalizedVariableDebtFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_normalized_variable_debt`;
 export const PoolGetReserveNormalizedIncomeFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_reserve_normalized_income`;
 export const PoolGetUserConfigurationFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_user_configuration`;
-export const PoolGetBridgeProtocolFeeFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_bridge_protocol_fee`;
 export const PoolGetFlashloanPremiumTotalFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_flashloan_premium_total`;
 export const PoolGetFlashloanPremiumToProtocolFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::get_flashloan_premium_to_protocol`;
 export const PoolMaxNumberReservesFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool::max_number_reserves`;
@@ -49,6 +57,7 @@ export const PoolScaledVariableTokenBalanceOfFuncAddr: MoveFunctionId = `${PoolM
 // Entry
 export const PoolConfiguratorInitReservesFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::init_reserves`;
 export const PoolConfiguratorDropReserveFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::drop_reserve`;
+export const UpdateInterestRateStrategyFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::update_interest_rate_strategy`;
 export const PoolConfiguratorSetAssetEmodeCategoryFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::set_asset_emode_category`;
 export const PoolConfiguratorSetBorrowCapFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::set_borrow_cap`;
 export const PoolConfiguratorSetBorrowableInIsolationFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::set_borrowable_in_isolation`;
@@ -65,8 +74,6 @@ export const PoolConfiguratorSetReserveFreezeFuncAddr: MoveFunctionId = `${PoolM
 export const PoolConfiguratorSetReservePauseFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::set_reserve_pause`;
 export const PoolConfiguratorSetSiloedBorrowingFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::set_siloed_borrowing`;
 export const PoolConfiguratorSetSupplyCapFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::set_supply_cap`;
-export const PoolConfiguratorSetUnbackedMintCapFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::set_unbacked_mint_cap`;
-export const PoolConfiguratorUpdateBridgeProtocolFeeFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::update_bridge_protocol_fee`;
 export const PoolConfiguratorUpdateFlashloanPremiumToProtocolFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::update_flashloan_premium_to_protocol`;
 export const PoolConfiguratorUpdateFlashloanPremiumTotalFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_configurator::update_flashloan_premium_total`;
 
@@ -111,11 +118,9 @@ export const GetReserveCapsFuncAddr: MoveFunctionId = `${PoolManagerAccountAddre
 export const GetPausedFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_paused`;
 export const GetSiloedBorrowingFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_siloed_borrowing`;
 export const GetLiquidationProtocolFeeTokensFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_liquidation_protocol_fee`;
-export const GetUnbackedMintCapFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_unbacked_mint_cap`;
 export const GetDebtCeilingFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_debt_ceiling`;
 export const GetDebtCeilingDecimalsFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_debt_ceiling_decimals`;
 export const GetReserveDataFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_reserve_data`;
-export const GetReserveDataAndReservesCountFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_reserve_data_and_reserves_count`;
 export const GetATokenTotalSupplyFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_a_token_total_supply`;
 export const GetTotalDebtFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_total_debt`;
 export const GetUserReserveDataFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::pool_data_provider::get_user_reserve_data`;
@@ -187,10 +192,11 @@ export const strategyDAI = {
   reserveDecimals: "8",
   // aTokenImpl: types_1.eContractid.AToken,
   reserveFactor: "1000",
-  supplyCap: "0",
+  supplyCap: "100000",
   borrowCap: "0",
   debtCeiling: "0",
   borrowableIsolation: true,
+  emode: 0,
 };
 
 export const strategyUSDC = {
@@ -209,7 +215,9 @@ export const strategyUSDC = {
   borrowCap: "0",
   debtCeiling: "0",
   borrowableIsolation: true,
+  emode: 0,
 };
+
 export const strategyAAVE = {
   // strategy: rateStrategies_1.rateStrategyVolatileOne,
   baseLTVAsCollateral: "5000",
@@ -223,9 +231,10 @@ export const strategyAAVE = {
   // aTokenImpl: types_1.eContractid.AToken,
   reserveFactor: "0",
   supplyCap: "0",
-  borrowCap: "0",
+  borrowCap: "80000",
   debtCeiling: "0",
   borrowableIsolation: false,
+  emode: 0,
 };
 
 export const strategyWETH = {
@@ -244,6 +253,7 @@ export const strategyWETH = {
   borrowCap: "0",
   debtCeiling: "0",
   borrowableIsolation: false,
+  emode: 0,
 };
 
 export const strategyLINK = {
@@ -260,8 +270,9 @@ export const strategyLINK = {
   reserveFactor: "2000",
   supplyCap: "0",
   borrowCap: "0",
-  debtCeiling: "0",
-  borrowableIsolation: false,
+  debtCeiling: "100000000",
+  borrowableIsolation: true,
+  emode: 0,
 };
 
 export const strategyWBTC = {
@@ -276,10 +287,11 @@ export const strategyWBTC = {
   reserveDecimals: "8",
   // aTokenImpl: types_1.eContractid.AToken,
   reserveFactor: "2000",
-  supplyCap: "0",
-  borrowCap: "0",
+  supplyCap: "200000",
+  borrowCap: "100000",
   debtCeiling: "0",
   borrowableIsolation: false,
+  emode: 1,
 };
 
 export const strategyUSDT = {
@@ -298,6 +310,7 @@ export const strategyUSDT = {
   borrowCap: "0",
   debtCeiling: "1000000",
   borrowableIsolation: true,
+  emode: 0,
 };
 
 export const strategyEURS = {
@@ -316,6 +329,7 @@ export const strategyEURS = {
   borrowCap: "0",
   debtCeiling: "1000000",
   borrowableIsolation: false,
+  emode: 0,
 };
 
 // rate Strategy
@@ -359,8 +373,6 @@ export type ReserveData = {
   interest_rate_strategy_address: string;
   /// the current treasury balance, scaled
   accrued_to_treasury: Number;
-  /// the outstanding unbacked aTokens minted through the bridging feature
-  unbacked: Number;
   /// the outstanding debt borrowed against this asset in isolation mode
   isolation_mode_total_debt: Number;
 };

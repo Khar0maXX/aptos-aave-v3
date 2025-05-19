@@ -1,4 +1,4 @@
-import { AccountAddress, CommittedTransactionResponse } from "@aptos-labs/ts-sdk";
+import { AccountAddress, CommittedTransactionResponse, EntryFunctionArgumentTypes, SimpleEntryFunctionArgumentTypes } from "@aptos-labs/ts-sdk";
 import { BigNumber } from "@ethersproject/bignumber";
 import { AptosContractWrapperBaseClass } from "./baseClass";
 import { mapToBN } from "../helpers/contractHelper";
@@ -11,6 +11,7 @@ import {
   RemoveAssetFeedIdsFuncAddr,
   GetOracleResourceAccountFuncAddr,
   GetOracleAddressFuncAddr,
+  SetAssetCustomPrice,
 } from "../configs/oracle";
 
 export class OracleClient extends AptosContractWrapperBaseClass {
@@ -28,6 +29,14 @@ export class OracleClient extends AptosContractWrapperBaseClass {
 
   public async setAssetFeedId(asset: AccountAddress, feedId: Uint8Array): Promise<CommittedTransactionResponse> {
     return this.sendTxAndAwaitResponse(SetAssetFeedIdFuncAddr, [asset, feedId]);
+  }
+
+  public async setAssetCustomPrice(asset: AccountAddress, customPrice: BigNumber): Promise<CommittedTransactionResponse> {
+    const args: Array<EntryFunctionArgumentTypes | SimpleEntryFunctionArgumentTypes> = [
+      asset,
+      customPrice.toString(),
+    ];
+    return this.sendTxAndAwaitResponse(SetAssetCustomPrice, args);
   }
 
   public async batchSetAssetFeedIds(assets: Array<AccountAddress>, feedIds: Array<Uint8Array>): Promise<CommittedTransactionResponse> {

@@ -1,6 +1,6 @@
 import { BigNumber } from "@ethersproject/bignumber";
 import { initializeMakeSuite, testEnv } from "../configs/config";
-import { getDecimals, UnderlyingDecimalsFuncAddr, UnderlyingManager, UnderlyingMintFuncAddr } from "../configs/tokens";
+import { DAI, getDecimals, UnderlyingDecimalsFuncAddr, UnderlyingManager, UnderlyingMintFuncAddr } from "../configs/tokens";
 import { Transaction, View } from "../helpers/helper";
 import { aptos } from "../configs/common";
 import { BorrowFuncAddr, SupplyFuncAddr } from "../configs/supplyBorrow";
@@ -14,19 +14,26 @@ import {
   PoolManager,
   PoolSetUserEmodeFuncAddr,
 } from "../configs/pool";
-import { GetAssetPriceFuncAddr, OracleManager, SetAssetPriceFuncAddr } from "../configs/oracle";
+import { GetAssetPriceFuncAddr, OracleManager } from "../configs/oracle";
 import { ZERO_ADDRESS } from "../helpers/constants";
+import { OracleClient } from "../clients/oracleClient";
+import { AptosProvider } from "../wrappers/aptosProvider";
+import { priceFeeds } from "../helpers/priceFeeds";
+
+const aptosProvider = AptosProvider.fromEnvs();
+let oracleClient: OracleClient;
 
 describe("Borrow Test", () => {
   beforeAll(async () => {
     await initializeMakeSuite();
+    oracleClient = new OracleClient(aptosProvider, OracleManager);
   });
 
   it("validateBorrow() when amount == 0 (revert expected)", async () => {
     const { users, dai } = testEnv;
     const user = users[0];
     try {
-      await Transaction(aptos, user, BorrowFuncAddr, [dai, user.accountAddress.toString(), 0, 1, 0, true]);
+      await Transaction(aptos, user, BorrowFuncAddr, [dai, 0, 2, 0, user.accountAddress.toString()]);
     } catch (err) {
       expect(err.toString().includes("validation_logic: 0x1a")).toBe(true);
     }
@@ -65,11 +72,10 @@ describe("Borrow Test", () => {
     try {
       await Transaction(aptos, user, BorrowFuncAddr, [
         aave,
-        user.accountAddress.toString(),
         aaveDepositAmount,
-        1,
+        2,
         0,
-        true,
+        user.accountAddress.toString(),
       ]);
     } catch (err) {
       // console.log("err:", err.toString());
@@ -116,11 +122,10 @@ describe("Borrow Test", () => {
     try {
       await Transaction(aptos, user, BorrowFuncAddr, [
         dai,
-        user.accountAddress.toString(),
         daiDepositAmount,
-        1,
+        2,
         0,
-        true,
+        user.accountAddress.toString(),
       ]);
     } catch (err) {
       // console.log('err:', err.toString())
@@ -163,11 +168,10 @@ describe("Borrow Test", () => {
     try {
       await Transaction(aptos, user, BorrowFuncAddr, [
         dai,
-        user.accountAddress.toString(),
         daiDepositAmount,
-        1,
+        2,
         0,
-        true,
+        user.accountAddress.toString(),
       ]);
     } catch (err) {
       expect(err.toString().includes("validation_logic: 0x1e")).toBe(true);
@@ -210,22 +214,21 @@ describe("Borrow Test", () => {
 
     const borrowAmount = 1000 * 10 ** daiDecimals;
     // user borrow dai
-    await Transaction(aptos, user, BorrowFuncAddr, [dai, user.accountAddress.toString(), borrowAmount, 1, 0, true]);
+    await Transaction(aptos, user, BorrowFuncAddr, [dai, borrowAmount, 2, 0, user.accountAddress.toString()]);
 
     const [daiPrice] = await View(aptos, GetAssetPriceFuncAddr, [dai]);
 
     // The oracle sets the price of dai
-    await Transaction(aptos, OracleManager, SetAssetPriceFuncAddr, [dai, (daiPrice as number) * 2]);
+    await oracleClient.setAssetCustomPrice(dai, BigNumber.from((daiPrice as number) * 2));
 
     const userBorrowDaiAmount = 200 * 10 ** daiDecimals;
     try {
       await Transaction(aptos, user, BorrowFuncAddr, [
         dai,
-        user.accountAddress.toString(),
         userBorrowDaiAmount,
-        1,
+        2,
         0,
-        true,
+        user.accountAddress.toString(),
       ]);
     } catch (err) {
       // console.log("err:", err.toString());
@@ -272,7 +275,6 @@ describe("Borrow Test", () => {
       9800,
       9900,
       10100,
-      ZERO_ADDRESS,
       "NO-ASSETS",
     ]);
 
@@ -282,15 +284,13 @@ describe("Borrow Test", () => {
       await Transaction(aptos, user, PoolSetUserEmodeFuncAddr, [101]);
       await Transaction(aptos, user, BorrowFuncAddr, [
         dai,
-        user.accountAddress.toString(),
         userBorrowDaiAmount,
-        1,
+        2,
         0,
-        true,
+        user.accountAddress.toString(),
       ]);
     } catch (err) {
-      // console.log('err:', err.toString())
-      expect(err.toString().includes("pool_validation: 0x3a")).toBe(true);
+      expect(err.toString().includes("validation_logic: 0x3a")).toBe(true);
     }
   });
 
@@ -335,11 +335,10 @@ describe("Borrow Test", () => {
     const firstDaiBorrow = 50 * 10 ** daiDecimals;
     await Transaction(aptos, borrower, BorrowFuncAddr, [
       dai,
-      borrower.accountAddress.toString(),
       firstDaiBorrow,
-      1,
+      2,
       0,
-      true,
+      borrower.accountAddress.toString(),
     ]);
 
     const [currentATokenBalance, , , ,] = await View(aptos, GetUserReserveDataFuncAddr, [

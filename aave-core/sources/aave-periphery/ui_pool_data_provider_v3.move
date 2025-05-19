@@ -1,74 +1,89 @@
+/// @title UI Pool Data Provider V3 Module
+/// @author Aave
+/// @notice Provides data for UI about Aave protocol pool and user reserve states
 module aave_pool::ui_pool_data_provider_v3 {
-    use std::option::Self;
+    // imports
     use std::string::String;
     use std::vector;
-    use aptos_framework::object::{Self, Object};
+    use aptos_framework::object;
+    use aptos_framework::dispatchable_fungible_asset;
+    use aptos_framework::fungible_asset;
+    use aptos_framework::fungible_asset::Metadata;
     use aptos_framework::primary_fungible_store;
-    use aptos_framework::fungible_asset::{Self, Metadata};
+    use aptos_framework::aptos_coin;
+
     use aave_config::reserve_config;
     use aave_config::user_config;
-    use aave_oracle::oracle::{get_asset_price};
-    use aave_oracle::oracle_base::{get_oracle_base_currency, get_base_currency_unit};
-    use aave_pool::a_token_factory;
-    use aave_rate::default_reserve_interest_rate_strategy::{
+    use aave_oracle::oracle::Self;
+    use aave_pool::pool_data_provider;
+    use aave_pool::default_reserve_interest_rate_strategy::{
         get_base_variable_borrow_rate,
         get_optimal_usage_ratio,
         get_variable_rate_slope1,
         get_variable_rate_slope2
     };
-    use aave_pool::eac_aggregator_proxy::{
-        create_eac_aggregator_proxy,
-        decimals,
-        latest_answer,
-        MockEacAggregatorProxy
-    };
-    use aave_pool::emode_logic;
-    use aave_pool::pool::{
-        Self,
-        get_reserve_a_token_address,
-        get_reserve_accrued_to_treasury,
-        get_reserve_current_liquidity_rate,
-        get_reserve_current_variable_borrow_rate,
-        get_reserve_isolation_mode_total_debt,
-        get_reserve_last_update_timestamp,
-        get_reserve_liquidity_index,
-        get_reserve_unbacked,
-        get_reserve_variable_borrow_index,
-        get_reserve_variable_debt_token_address
-    };
-    use aave_pool::token_base;
+    use aave_pool::coin_migrator;
     use aave_pool::variable_debt_token_factory;
+    use aave_pool::a_token_factory;
+    use aave_pool::emode_logic;
+    use aave_pool::pool::Self;
 
-    const EMPTY_ADDRESS: address = @0x0;
+    // Constants
+    /// @notice Currency unit for USD representation
+    const USD_CURRENCY_UNIT: u256 = 1_000_000_000_000_000_000;
 
-    const APT_CURRENCY_UNIT: u256 = 100000000;
-
-    const EROLE_NOT_EXISTS: u64 = 1;
-    const ESTREAM_NOT_EXISTS: u64 = 2;
-    const NOT_FUNDS_ADMIN: u64 = 3;
-    const ESTREAM_TO_THE_CONTRACT_ITSELF: u64 = 4;
-    const ESTREAM_TO_THE_CALLER: u64 = 5;
-    const EDEPOSIT_IS_ZERO: u64 = 6;
-    const ESTART_TIME_BEFORE_BLOCK_TIMESTAMP: u64 = 7;
-    const ESTOP_TIME_BEFORE_THE_START_TIME: u64 = 8;
-    const EDEPOSIT_SMALLER_THAN_TIME_DELTA: u64 = 9;
-    const EDEPOSIT_NOT_MULTIPLE_OF_TIME_DELTA: u64 = 10;
-    const EAMOUNT_IS_ZERO: u64 = 11;
-    const EAMOUNT_EXCEEDS_THE_AVAILABLE_BALANCE: u64 = 12;
-
-    const UI_POOL_DATA_PROVIDER_V3_NAME: vector<u8> = b"AAVE_UI_POOL_DATA_PROVIDER_V3";
-
-    struct UiPoolDataProviderV3Data has key {
-        network_base_token_price_in_usd_proxy_aggregator: MockEacAggregatorProxy,
-        market_reference_currency_price_in_usd_proxy_aggregator: MockEacAggregatorProxy
-    }
-
+    // Structs
+    /// @notice Aggregated reserve data structure
+    /// @param underlying_asset The address of the underlying asset
+    /// @param name The name of the reserve
+    /// @param symbol The symbol of the reserve
+    /// @param decimals The number of decimals of the reserve
+    /// @param base_ltv_as_collateral The base LTV as collateral
+    /// @param reserve_liquidation_threshold The reserve liquidation threshold
+    /// @param reserve_liquidation_bonus The reserve liquidation bonus
+    /// @param reserve_factor The reserve factor
+    /// @param usage_as_collateral_enabled Whether the reserve can be used as collateral
+    /// @param borrowing_enabled Whether borrowing is enabled
+    /// @param is_active Whether the reserve is active
+    /// @param is_frozen Whether the reserve is frozen
+    /// @param liquidity_index The liquidity index
+    /// @param variable_borrow_index The variable borrow index
+    /// @param liquidity_rate The liquidity rate
+    /// @param variable_borrow_rate The variable borrow rate
+    /// @param last_update_timestamp The last update timestamp
+    /// @param a_token_address The address of the aToken
+    /// @param variable_debt_token_address The address of the variable debt token
+    /// @param available_liquidity The available liquidity
+    /// @param total_scaled_variable_debt The total scaled variable debt
+    /// @param price_in_market_reference_currency The price in market reference currency
+    /// @param variable_rate_slope1 The variable rate slope 1
+    /// @param variable_rate_slope2 The variable rate slope 2
+    /// @param base_variable_borrow_rate The base variable borrow rate
+    /// @param optimal_usage_ratio The optimal usage ratio
+    /// @param is_paused Whether the reserve is paused
+    /// @param is_siloed_borrowing Whether siloed borrowing is enabled
+    /// @param accrued_to_treasury The amount accrued to the treasury
+    /// @param isolation_mode_total_debt The isolation mode total debt
+    /// @param flash_loan_enabled Whether flash loans are enabled
+    /// @param debt_ceiling The debt ceiling
+    /// @param debt_ceiling_decimals The debt ceiling decimals
+    /// @param e_mode_category_id The e-mode category ID
+    /// @param borrow_cap The borrow cap
+    /// @param supply_cap The supply cap
+    /// @param e_mode_ltv The e-mode LTV
+    /// @param e_mode_liquidation_threshold The e-mode liquidation threshold
+    /// @param e_mode_liquidation_bonus The e-mode liquidation bonus
+    /// @param e_mode_label The e-mode label
+    /// @param borrowable_in_isolation Whether the reserve is borrowable in isolation
+    /// @param deficit The deficit
+    /// @param virtual_underlying_balance The virtual underlying balance
+    /// @param is_virtual_acc_active Whether the virtual account is active
     struct AggregatedReserveData has key, store, drop {
         underlying_asset: address,
         name: String,
         symbol: String,
         decimals: u256,
-        base_lt_vas_collateral: u256,
+        base_ltv_as_collateral: u256,
         reserve_liquidation_threshold: u256,
         reserve_liquidation_bonus: u256,
         reserve_factor: u256,
@@ -88,7 +103,6 @@ module aave_pool::ui_pool_data_provider_v3 {
         available_liquidity: u256,
         total_scaled_variable_debt: u256,
         price_in_market_reference_currency: u256,
-        price_oracle: address,
         variable_rate_slope1: u256,
         variable_rate_slope2: u256,
         base_variable_borrow_rate: u256,
@@ -97,7 +111,6 @@ module aave_pool::ui_pool_data_provider_v3 {
         is_paused: bool,
         is_siloed_borrowing: bool,
         accrued_to_treasury: u128,
-        unbacked: u128,
         isolation_mode_total_debt: u128,
         flash_loan_enabled: bool,
         // debts
@@ -110,16 +123,20 @@ module aave_pool::ui_pool_data_provider_v3 {
         e_mode_ltv: u16,
         e_mode_liquidation_threshold: u16,
         e_mode_liquidation_bonus: u16,
-        e_mode_price_source: address,
         e_mode_label: String,
-        borrowable_in_isolation: bool
+        borrowable_in_isolation: bool,
+        // v3.3
+        deficit: u128,
+        virtual_underlying_balance: u128,
+        is_virtual_acc_active: bool
     }
 
-    #[test_only]
-    public fun get_available_liquidity(self: &AggregatedReserveData): u256 {
-        self.available_liquidity
-    }
-
+    /// @notice User reserve data structure
+    /// @param decimals The number of decimals of the reserve
+    /// @param underlying_asset The address of the underlying asset
+    /// @param scaled_a_token_balance The scaled aToken balance
+    /// @param usage_as_collateral_enabled_on_user Whether usage as collateral is enabled for the user
+    /// @param scaled_variable_debt The scaled variable debt
     struct UserReserveData has key, store, drop {
         decimals: u256,
         underlying_asset: address,
@@ -128,6 +145,11 @@ module aave_pool::ui_pool_data_provider_v3 {
         scaled_variable_debt: u256
     }
 
+    /// @notice Base currency information structure
+    /// @param market_reference_currency_unit The market reference currency unit
+    /// @param market_reference_currency_price_in_usd The market reference currency price in USD
+    /// @param network_base_token_price_in_usd The network base token price in USD
+    /// @param network_base_token_price_decimals The network base token price decimals
     struct BaseCurrencyInfo has key, store, drop {
         market_reference_currency_unit: u256,
         market_reference_currency_price_in_usd: u256,
@@ -135,97 +157,78 @@ module aave_pool::ui_pool_data_provider_v3 {
         network_base_token_price_decimals: u8
     }
 
-    fun init_module(sender: &signer) {
-        let state_object_constructor_ref =
-            &object::create_named_object(sender, UI_POOL_DATA_PROVIDER_V3_NAME);
-        let state_object_signer = &object::generate_signer(state_object_constructor_ref);
-
-        move_to(
-            state_object_signer,
-            UiPoolDataProviderV3Data {
-                network_base_token_price_in_usd_proxy_aggregator: create_eac_aggregator_proxy(),
-                market_reference_currency_price_in_usd_proxy_aggregator: create_eac_aggregator_proxy()
-            }
-        );
-    }
-
-    #[test_only]
-    public fun init_module_test(sender: &signer) {
-        init_module(sender);
-    }
-
+    // Public view functions
     #[view]
-    public fun ui_pool_data_provider_v3_data_address(): address {
-        object::create_object_address(&@aave_pool, UI_POOL_DATA_PROVIDER_V3_NAME)
-    }
-
-    #[view]
-    public fun ui_pool_data_provider_v3_data_object(): Object<UiPoolDataProviderV3Data> {
-        object::address_to_object<UiPoolDataProviderV3Data>(
-            ui_pool_data_provider_v3_data_address()
-        )
-    }
-
-    #[view]
+    /// @notice Gets the list of reserves in the pool
+    /// @return Vector of reserve addresses
     public fun get_reserves_list(): vector<address> {
         pool::get_reserves_list()
     }
 
     #[view]
+    /// @notice Gets data for all reserves in the pool
+    /// @return Tuple containing vector of aggregated reserve data and base currency information
     public fun get_reserves_data(): (vector<AggregatedReserveData>, BaseCurrencyInfo) {
-        let oracle = @aave_oracle;
-
         let reserves = pool::get_reserves_list();
 
         let reserves_data = vector::empty<AggregatedReserveData>();
 
         for (i in 0..vector::length(&reserves)) {
             let underlying_asset = *vector::borrow(&reserves, i);
+            let underlying_token = object::address_to_object<Metadata>(underlying_asset);
 
             let base_data = pool::get_reserve_data(underlying_asset);
 
-            let liquidity_index = get_reserve_liquidity_index(&base_data);
-            let variable_borrow_index = get_reserve_variable_borrow_index(&base_data);
-            let liquidity_rate = get_reserve_current_liquidity_rate(&base_data);
+            let liquidity_index = pool::get_reserve_liquidity_index(base_data);
+            let variable_borrow_index =
+                pool::get_reserve_variable_borrow_index(base_data);
+            let liquidity_rate = pool::get_reserve_current_liquidity_rate(base_data);
             let variable_borrow_rate =
-                get_reserve_current_variable_borrow_rate(&base_data);
-            let last_update_timestamp = get_reserve_last_update_timestamp(&base_data);
-            let a_token_address = get_reserve_a_token_address(&base_data);
+                pool::get_reserve_current_variable_borrow_rate(base_data);
+            let last_update_timestamp =
+                pool::get_reserve_last_update_timestamp(base_data);
+            let a_token_address = pool::get_reserve_a_token_address(base_data);
             let variable_debt_token_address =
-                get_reserve_variable_debt_token_address(&base_data);
-            let price_in_market_reference_currency = get_asset_price(underlying_asset);
+                pool::get_reserve_variable_debt_token_address(base_data);
+            let price_in_market_reference_currency =
+                oracle::get_asset_price(underlying_asset);
 
-            let price_oracle = oracle;
-
-            let atoken_accunt_address =
+            let atoken_account_address =
                 a_token_factory::get_token_account_address(a_token_address);
 
-            let underlying_asset_metadata =
+            let _underlying_asset_metadata =
                 object::address_to_object<Metadata>(underlying_asset);
 
             let available_liquidity =
-                primary_fungible_store::balance(
-                    atoken_accunt_address, underlying_asset_metadata
-                );
+                if (primary_fungible_store::primary_store_exists(
+                    atoken_account_address, underlying_token
+                )) {
+                    dispatchable_fungible_asset::derived_balance(
+                        primary_fungible_store::primary_store(
+                            atoken_account_address, underlying_token
+                        )
+                    )
+                } else { 0 };
 
             let total_scaled_variable_debt =
-                token_base::scaled_total_supply(variable_debt_token_address);
+                variable_debt_token_factory::scaled_total_supply(
+                    variable_debt_token_address
+                );
 
-            let symbol = fungible_asset::symbol(underlying_asset_metadata);
-            let name = fungible_asset::name(underlying_asset_metadata);
-
+            let symbol = fungible_asset::symbol(underlying_token);
+            let name = fungible_asset::name(underlying_token);
             let reserve_configuration_map =
-                pool::get_reserve_configuration_by_reserve_data(&base_data);
+                pool::get_reserve_configuration_by_reserve_data(base_data);
 
             let (
-                base_lt_vas_collateral,
+                base_ltv_as_collateral,
                 reserve_liquidation_threshold,
                 reserve_liquidation_bonus,
                 decimals,
                 reserve_factor,
                 e_mode_category_id
             ) = reserve_config::get_params(&reserve_configuration_map);
-            let usage_as_collateral_enabled = base_lt_vas_collateral != 0;
+            let usage_as_collateral_enabled = base_ltv_as_collateral != 0;
 
             let (is_active, is_frozen, borrowing_enabled, is_paused) =
                 reserve_config::get_flags(&reserve_configuration_map);
@@ -247,20 +250,17 @@ module aave_pool::ui_pool_data_provider_v3 {
 
             let is_siloed_borrowing =
                 reserve_config::get_siloed_borrowing(&reserve_configuration_map);
-            let unbacked = get_reserve_unbacked(&base_data);
             let isolation_mode_total_debt =
-                get_reserve_isolation_mode_total_debt(&base_data);
-            let accrued_to_treasury = get_reserve_accrued_to_treasury(&base_data);
+                pool::get_reserve_isolation_mode_total_debt(base_data);
+            let accrued_to_treasury = pool::get_reserve_accrued_to_treasury(base_data);
 
             let e_mode_category_id_u8 = (e_mode_category_id as u8);
 
-            let (e_mode_ltv, e_mode_liquidation_threshold, _) =
+            let (e_mode_ltv, e_mode_liquidation_threshold) =
                 emode_logic::get_emode_configuration(e_mode_category_id_u8);
 
             let e_mode_liquidation_bonus =
                 emode_logic::get_emode_e_mode_liquidation_bonus(e_mode_category_id_u8);
-            let e_mode_price_source =
-                emode_logic::get_emode_e_mode_price_source(e_mode_category_id_u8);
             let e_mode_label = emode_logic::get_emode_e_mode_label(e_mode_category_id_u8);
 
             let borrowable_in_isolation =
@@ -271,7 +271,7 @@ module aave_pool::ui_pool_data_provider_v3 {
                 name,
                 symbol,
                 decimals,
-                base_lt_vas_collateral,
+                base_ltv_as_collateral,
                 reserve_liquidation_threshold,
                 reserve_liquidation_bonus,
                 reserve_factor,
@@ -289,7 +289,6 @@ module aave_pool::ui_pool_data_provider_v3 {
                 available_liquidity: (available_liquidity as u256),
                 total_scaled_variable_debt,
                 price_in_market_reference_currency,
-                price_oracle,
                 variable_rate_slope1,
                 variable_rate_slope2,
                 base_variable_borrow_rate,
@@ -297,7 +296,6 @@ module aave_pool::ui_pool_data_provider_v3 {
                 is_paused,
                 is_siloed_borrowing,
                 accrued_to_treasury: (accrued_to_treasury as u128),
-                unbacked,
                 isolation_mode_total_debt,
                 flash_loan_enabled,
                 debt_ceiling,
@@ -308,25 +306,26 @@ module aave_pool::ui_pool_data_provider_v3 {
                 e_mode_ltv: (e_mode_ltv as u16),
                 e_mode_liquidation_threshold: (e_mode_liquidation_threshold as u16),
                 e_mode_liquidation_bonus,
-                e_mode_price_source,
                 e_mode_label,
-                borrowable_in_isolation
+                borrowable_in_isolation,
+                deficit: pool_data_provider::get_reserve_deficit(underlying_asset),
+                virtual_underlying_balance: pool::get_reserve_virtual_underlying_balance(
+                    base_data
+                ),
+                is_virtual_acc_active: true
             };
 
             vector::push_back(&mut reserves_data, aggregated_reserve_data);
         };
 
-        let network_base_token_price_in_usd = latest_answer();
-        let network_base_token_price_decimals = decimals();
-
-        let opt_base_currency = get_oracle_base_currency();
-        let (market_reference_currency_unit, market_reference_currency_price_in_usd) =
-            if (option::is_some(&opt_base_currency)) {
-                let unit = get_base_currency_unit(&*option::borrow(&opt_base_currency));
-                ((unit as u256), (unit as u256))
-            } else {
-                (APT_CURRENCY_UNIT, latest_answer())
-            };
+        let apt_mapped_fa_asset = coin_migrator::get_fa_address<aptos_coin::AptosCoin>();
+        // NOTE(mpsc0x): the network base and the market reference currencies are on Aptos the same, but we
+        // keep the interface for compatibility reasons
+        let network_base_token_price_in_usd =
+            oracle::get_asset_price(apt_mapped_fa_asset);
+        let network_base_token_price_decimals = oracle::get_asset_price_decimals();
+        let market_reference_currency_unit = USD_CURRENCY_UNIT;
+        let market_reference_currency_price_in_usd = USD_CURRENCY_UNIT;
 
         let base_currency_info = BaseCurrencyInfo {
             market_reference_currency_unit,
@@ -338,6 +337,9 @@ module aave_pool::ui_pool_data_provider_v3 {
     }
 
     #[view]
+    /// @notice Gets data for all reserves for a specific user
+    /// @param user The address of the user
+    /// @return Tuple containing vector of user reserve data and the user's e-mode category ID
     public fun get_user_reserves_data(user: address): (vector<UserReserveData>, u8) {
         let reserves = pool::get_reserves_list();
         let user_config = pool::get_user_configuration(user);
@@ -348,17 +350,15 @@ module aave_pool::ui_pool_data_provider_v3 {
 
         for (i in 0..vector::length(&reserves)) {
             let underlying_asset = *vector::borrow(&reserves, i);
+            let underlying_token = object::address_to_object<Metadata>(underlying_asset);
 
             let base_data = pool::get_reserve_data(underlying_asset);
-            let reserve_index = pool::get_reserve_id(&base_data);
-            let decimals =
-                fungible_asset::decimals(
-                    object::address_to_object<Metadata>(underlying_asset)
-                );
+            let reserve_index = pool::get_reserve_id(base_data);
 
+            let decimals = fungible_asset::decimals(underlying_token);
             let scaled_a_token_balance =
                 a_token_factory::scaled_balance_of(
-                    user, pool::get_reserve_a_token_address(&base_data)
+                    user, pool::get_reserve_a_token_address(base_data)
                 );
 
             let usage_as_collateral_enabled_on_user =
@@ -367,7 +367,7 @@ module aave_pool::ui_pool_data_provider_v3 {
             let scaled_variable_debt = 0;
             if (user_config::is_borrowing(&user_config, (reserve_index as u256))) {
                 scaled_variable_debt = variable_debt_token_factory::scaled_balance_of(
-                    user, pool::get_reserve_variable_debt_token_address(&base_data)
+                    user, pool::get_reserve_variable_debt_token_address(base_data)
                 );
             };
 
@@ -383,378 +383,6 @@ module aave_pool::ui_pool_data_provider_v3 {
             );
         };
 
-        (user_reserves_data, (user_emode_category_id as u8))
-    }
-
-    #[test_only]
-    const TEST_SUCCESS: u64 = 1;
-    #[test_only]
-    const TEST_FAILED: u64 = 2;
-
-    #[test_only]
-    use std::string::{Self, utf8};
-    #[test_only]
-    use std::signer;
-    #[test_only]
-    use aptos_std::string_utils;
-    #[test_only]
-    use aave_rate::default_reserve_interest_rate_strategy::Self;
-    #[test_only]
-    use aave_math::wad_ray_math;
-    #[test_only]
-    use aptos_framework::account;
-
-    #[test]
-    fun test_ui_pool_data_provider_v3_data_address() {
-        assert!(
-            ui_pool_data_provider_v3_data_address()
-                == object::create_object_address(
-                    &@aave_pool, UI_POOL_DATA_PROVIDER_V3_NAME
-                ),
-            TEST_SUCCESS
-        );
-    }
-
-    #[test(aave_role_super_admin = @aave_pool)]
-    fun test_ui_pool_data_provider_v3_data_object(
-        aave_role_super_admin: &signer
-    ) {
-        init_module_test(aave_role_super_admin);
-        assert!(
-            ui_pool_data_provider_v3_data_object()
-                == object::address_to_object<UiPoolDataProviderV3Data>(
-                    ui_pool_data_provider_v3_data_address()
-                ),
-            TEST_SUCCESS
-        );
-    }
-
-    #[
-        test(
-            aave_pool = @aave_pool,
-            aave_acl = @aave_acl,
-            underlying_tokens = @underlying_tokens,
-            aave_oracle = @aave_oracle,
-            publisher = @data_feeds,
-            platform = @platform,
-            aave_rate = @aave_rate
-        )
-    ]
-    fun test_get_reserves_data(
-        aave_pool: &signer,
-        aave_acl: &signer,
-        underlying_tokens: &signer,
-        aave_oracle: &signer,
-        publisher: &signer,
-        platform: &signer,
-        aave_rate: &signer
-    ) {
-        use aave_pool::mock_underlying_token_factory::Self;
-
-        account::create_account_for_test(signer::address_of(aave_pool));
-
-        // init current module
-        init_module_test(aave_pool);
-
-        // init acl
-        aave_acl::acl_manage::test_init_module(aave_acl);
-        let role_admin = aave_acl::acl_manage::get_pool_admin_role();
-        aave_acl::acl_manage::grant_role(
-            aave_acl,
-            aave_acl::acl_manage::get_pool_admin_role_for_testing(),
-            signer::address_of(aave_pool)
-        );
-
-        aave_acl::acl_manage::grant_role(
-            aave_acl,
-            aave_acl::acl_manage::get_pool_admin_role_for_testing(),
-            signer::address_of(aave_acl)
-        );
-        // set role admin
-        aave_acl::acl_manage::set_role_admin(
-            aave_acl,
-            aave_acl::acl_manage::get_pool_admin_role_for_testing(),
-            role_admin
-        );
-
-        aave_acl::acl_manage::add_pool_admin(
-            aave_acl, signer::address_of(underlying_tokens)
-        );
-
-        // init tokens base
-        token_base::test_init_module(aave_pool);
-
-        // init a token factory
-        aave_pool::a_token_factory::test_init_module(aave_pool);
-
-        // init debt token factory
-        aave_pool::variable_debt_token_factory::test_init_module(aave_pool);
-
-        // init underlyings token factory
-        aave_pool::mock_underlying_token_factory::test_init_module(aave_pool);
-
-        // init the oracle module
-        aave_oracle::oracle_tests::config_oracle(aave_oracle, publisher, platform);
-
-        // create mocked underlying tokens
-        let i = 0;
-        let treasury = signer::address_of(underlying_tokens);
-        let a_token_name = string::utf8(b"a");
-        let a_token_symbol = string::utf8(b"a");
-        let variable_debt_token_name = string::utf8(b"BTC");
-        let variable_debt_token_symbol = string::utf8(b"BTC");
-
-        let name = string_utils::format1(&b"APTOS_UNDERLYING_{}", i);
-        let symbol = string_utils::format1(&b"U_{}", i);
-        let decimals = 6;
-        let max_supply = 10000;
-        mock_underlying_token_factory::create_token(
-            underlying_tokens,
-            max_supply,
-            name,
-            symbol,
-            decimals,
-            utf8(b""),
-            utf8(b"")
-        );
-
-        let underlying_asset_address = @0x033;
-        let treasury_address = @0x034;
-
-        a_token_factory::create_token(
-            aave_pool,
-            name,
-            symbol,
-            decimals,
-            utf8(b""),
-            utf8(b""),
-            underlying_asset_address,
-            treasury_address
-        );
-
-        aave_rate::default_reserve_interest_rate_strategy::init_interest_rate_strategy(
-            aave_rate
-        );
-
-        let underlying_token_address =
-            mock_underlying_token_factory::token_address(symbol);
-
-        // register asset with oracle
-        aave_oracle::oracle::set_asset_feed_id(
-            underlying_tokens,
-            underlying_token_address,
-            aave_oracle::oracle_tests::get_test_feed_id()
-        );
-
-        // init the pool
-        aave_pool::pool::test_init_pool(aave_pool);
-
-        // set reserve interest rate using the pool admin
-        let optimal_usage_ratio: u256 = wad_ray_math::get_half_ray_for_testing();
-        let base_variable_borrow_rate: u256 = 0;
-        let variable_rate_slope1: u256 = 0;
-        let variable_rate_slope2: u256 = 0;
-        default_reserve_interest_rate_strategy::set_reserve_interest_rate_strategy(
-            aave_acl,
-            underlying_token_address,
-            optimal_usage_ratio,
-            base_variable_borrow_rate,
-            variable_rate_slope1,
-            variable_rate_slope2
-        );
-
-        // create reserves using the pool admin
-        aave_pool::pool::test_init_reserve(
-            aave_pool,
-            underlying_token_address,
-            treasury,
-            a_token_name,
-            a_token_symbol,
-            variable_debt_token_name,
-            variable_debt_token_symbol
-        );
-
-        // init emode
-        aave_pool::emode_logic::init_emode(aave_pool);
-
-        let (_vector_aggregated_reserve_data, base_currency_info) = get_reserves_data();
-
-        let network_base_token_price_in_usd = latest_answer();
-        let network_base_token_price_decimals = decimals();
-
-        let opt_base_currency = get_oracle_base_currency();
-        let (market_reference_currency_unit, market_reference_currency_price_in_usd) =
-            if (option::is_some(&opt_base_currency)) {
-                let unit = get_base_currency_unit(&*option::borrow(&opt_base_currency));
-                ((unit as u256), (unit as u256))
-            } else {
-                (APT_CURRENCY_UNIT, latest_answer())
-            };
-
-        let base_currency_info_exp = BaseCurrencyInfo {
-            market_reference_currency_unit,
-            market_reference_currency_price_in_usd,
-            network_base_token_price_in_usd,
-            network_base_token_price_decimals
-        };
-
-        assert!(
-            base_currency_info == base_currency_info_exp,
-            TEST_SUCCESS
-        );
-    }
-
-    #[
-        test(
-            aave_pool = @aave_pool,
-            aave_acl = @aave_acl,
-            underlying_tokens = @underlying_tokens,
-            aave_oracle = @aave_oracle,
-            publisher = @data_feeds,
-            platform = @platform,
-            aave_rate = @aave_rate
-        )
-    ]
-    fun test_get_user_reserves_data(
-        aave_pool: &signer,
-        aave_acl: &signer,
-        underlying_tokens: &signer,
-        aave_oracle: &signer,
-        publisher: &signer,
-        platform: &signer,
-        aave_rate: &signer
-    ) {
-        use aave_pool::mock_underlying_token_factory::Self;
-
-        account::create_account_for_test(signer::address_of(aave_pool));
-
-        // init current module
-        init_module_test(aave_pool);
-
-        // init acl
-        aave_acl::acl_manage::test_init_module(aave_acl);
-        let role_admin = aave_acl::acl_manage::get_pool_admin_role();
-        aave_acl::acl_manage::grant_role(
-            aave_acl,
-            aave_acl::acl_manage::get_pool_admin_role_for_testing(),
-            signer::address_of(aave_pool)
-        );
-
-        aave_acl::acl_manage::grant_role(
-            aave_acl,
-            aave_acl::acl_manage::get_pool_admin_role_for_testing(),
-            signer::address_of(aave_acl)
-        );
-        // set role admin
-        aave_acl::acl_manage::set_role_admin(
-            aave_acl,
-            aave_acl::acl_manage::get_pool_admin_role_for_testing(),
-            role_admin
-        );
-
-        aave_acl::acl_manage::add_pool_admin(
-            aave_acl, signer::address_of(underlying_tokens)
-        );
-
-        // init tokens base
-        token_base::test_init_module(aave_pool);
-
-        // init a token factory
-        aave_pool::a_token_factory::test_init_module(aave_pool);
-
-        // init debt token factory
-        aave_pool::variable_debt_token_factory::test_init_module(aave_pool);
-
-        // init underlyings token factory
-        aave_pool::mock_underlying_token_factory::test_init_module(aave_pool);
-
-        // init the oracle module
-        aave_oracle::oracle_tests::config_oracle(aave_oracle, publisher, platform);
-
-        // create mocked underlying tokens
-        let i = 0;
-        let treasury = signer::address_of(underlying_tokens);
-        let a_token_name = string::utf8(b"a");
-        let a_token_symbol = string::utf8(b"a");
-        let variable_debt_token_name = string::utf8(b"BTC");
-        let variable_debt_token_symbol = string::utf8(b"BTC");
-
-        let name = string_utils::format1(&b"APTOS_UNDERLYING_{}", i);
-        let symbol = string_utils::format1(&b"U_{}", i);
-        let decimals = 6;
-        let max_supply = 10000;
-        mock_underlying_token_factory::create_token(
-            underlying_tokens,
-            max_supply,
-            name,
-            symbol,
-            decimals,
-            utf8(b""),
-            utf8(b"")
-        );
-
-        let underlying_asset_address = @0x033;
-        let treasury_address = @0x034;
-
-        a_token_factory::create_token(
-            aave_pool,
-            name,
-            symbol,
-            decimals,
-            utf8(b""),
-            utf8(b""),
-            underlying_asset_address,
-            treasury_address
-        );
-
-        // init rate strategy - default strategy
-        aave_rate::default_reserve_interest_rate_strategy::init_interest_rate_strategy(
-            aave_rate
-        );
-
-        let underlying_token_address =
-            mock_underlying_token_factory::token_address(symbol);
-
-        // init the pool
-        aave_pool::pool::test_init_pool(aave_pool);
-
-        // set reserve interest rate using the pool admin
-        let optimal_usage_ratio: u256 = wad_ray_math::get_half_ray_for_testing();
-        let base_variable_borrow_rate: u256 = 0;
-        let variable_rate_slope1: u256 = 0;
-        let variable_rate_slope2: u256 = 0;
-        default_reserve_interest_rate_strategy::set_reserve_interest_rate_strategy(
-            aave_acl,
-            underlying_token_address,
-            optimal_usage_ratio,
-            base_variable_borrow_rate,
-            variable_rate_slope1,
-            variable_rate_slope2
-        );
-
-        // create reserves using the pool admin
-        aave_pool::pool::test_init_reserve(
-            aave_pool,
-            underlying_token_address,
-            treasury,
-            a_token_name,
-            a_token_symbol,
-            variable_debt_token_name,
-            variable_debt_token_symbol
-        );
-
-        // init emode
-        aave_pool::emode_logic::init_emode(aave_pool);
-
-        let (_vector_aggregated_reserve_data, user_emode_category) =
-            get_user_reserves_data(signer::address_of(aave_pool));
-
-        let user_emode_category_id =
-            emode_logic::get_user_emode(signer::address_of(aave_pool));
-
-        assert!(
-            user_emode_category == (user_emode_category_id as u8),
-            TEST_SUCCESS
-        );
+        (user_reserves_data, user_emode_category_id)
     }
 }

@@ -1,0 +1,51 @@
+name: "Install Aptos CLI"
+description: "Installs a fixed version of the Aptos CLI"
+
+inputs:
+  version:
+    description: "Aptos CLI version to install"
+    required: true
+    default: "7.2.0"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Aptos CLI
+      shell: bash
+      run: |-
+        VERSION=${{ inputs.version }}
+        ARCH=$(uname -m)
+        OS=$(uname -s)
+
+        # Determine correct file name based on architecture and OS
+        if [[ "$OS" == "Linux" ]]; then
+          if [[ "$ARCH" == "x86_64" ]]; then
+            FILENAME="aptos-cli-${VERSION}-Linux-x86_64.zip"
+          elif [[ "$ARCH" == "aarch64" ]]; then
+            FILENAME="aptos-cli-${VERSION}-Linux-aarch64.zip"
+          else
+            echo "Unsupported Linux architecture: $ARCH"
+            exit 1
+          fi
+        elif [[ "$OS" == "Darwin" ]]; then
+          FILENAME="aptos-cli-${VERSION}-MacOS-x86_64.zip"
+        elif [[ "$OS" == "Windows_NT" ]]; then
+          FILENAME="aptos-cli-${VERSION}-Windows-x86_64.zip"
+        else
+          echo "Unsupported operating system: $OS"
+          exit 1
+        fi
+
+        # Download & Install
+        URL="https://github.com/aptos-labs/aptos-core/releases/download/aptos-cli-v${VERSION}/${FILENAME}"
+        echo "Downloading Aptos CLI from $URL"
+        curl -sL "$URL" -o aptos-cli.zip
+        unzip aptos-cli.zip
+        chmod +x aptos
+        mkdir -p $HOME/.local/bin
+        export PATH="$HOME/.local/bin:$PATH"
+        sudo mv aptos $HOME/.local/bin
+        aptos --version
+        aptos update movefmt
+        echo 'Adding movefmt to PATH'
+        echo "$HOME/.aptos/bin" >> $GITHUB_PATH

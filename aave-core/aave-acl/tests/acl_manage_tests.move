@@ -2,11 +2,12 @@
 module aave_acl::acl_manage_tests {
     use std::signer;
     use std::string::utf8;
+    use std::vector;
+    use aptos_framework::event::emitted_events;
 
     use aave_acl::acl_manage::{
         add_admin_controlled_ecosystem_reserve_funds_admin,
         add_asset_listing_admin,
-        add_bridge,
         add_emergency_admin,
         add_emission_admin,
         add_flash_borrower,
@@ -18,8 +19,6 @@ module aave_acl::acl_manage_tests {
         get_admin_controlled_ecosystem_reserve_funds_admin_role_for_testing,
         get_asset_listing_admin_role,
         get_asset_listing_admin_role_for_testing,
-        get_bridge_role,
-        get_bridge_role_for_testing,
         get_emergency_admin_role,
         get_emergency_admin_role_for_testing,
         get_emission_admin_role,
@@ -38,7 +37,6 @@ module aave_acl::acl_manage_tests {
         has_role,
         is_admin_controlled_ecosystem_reserve_funds_admin,
         is_asset_listing_admin,
-        is_bridge,
         is_emergency_admin,
         is_emission_admin,
         is_flash_borrower,
@@ -48,7 +46,6 @@ module aave_acl::acl_manage_tests {
         is_risk_admin,
         remove_admin_controlled_ecosystem_reserve_funds_admin,
         remove_asset_listing_admin,
-        remove_bridge,
         remove_emergency_admin,
         remove_emission_admin,
         remove_flash_borrower,
@@ -58,11 +55,24 @@ module aave_acl::acl_manage_tests {
         remove_risk_admin,
         revoke_role,
         set_role_admin,
-        test_init_module
+        test_init_module,
+        RoleAdminChanged,
+        RoleGranted,
+        RoleRevoked,
+        assert_roles_initialized_for_testing,
+        default_admin_role,
+        get_role_admin,
+        renounce_role
     };
 
     const TEST_SUCCESS: u64 = 1;
     const TEST_FAILED: u64 = 2;
+
+    #[test(account = @0x41)]
+    #[expected_failure(abort_code = 1001, location = aave_acl::acl_manage)]
+    fun test_init_module_with_non_acl_owner(account: &signer) {
+        test_init_module(account);
+    }
 
     // ========== TEST: BASIC GETTERS ============
     #[test]
@@ -72,11 +82,6 @@ module aave_acl::acl_manage_tests {
                 == get_asset_listing_admin_role_for_testing(),
             TEST_SUCCESS
         );
-    }
-
-    #[test]
-    fun test_get_bridge_role() {
-        assert!(get_bridge_role() == get_bridge_role_for_testing(), TEST_SUCCESS);
     }
 
     #[test]
@@ -157,18 +162,6 @@ module aave_acl::acl_manage_tests {
     }
 
     #[test(super_admin = @aave_acl, test_addr = @0x01)]
-    fun test_is_bridge(super_admin: &signer, test_addr: &signer) {
-        // init the module
-        test_init_module(super_admin);
-        // add the asset listing role to some address
-        grant_role(
-            super_admin, get_bridge_role_for_testing(), signer::address_of(test_addr)
-        );
-        // check the address has the role assigned
-        assert!(is_bridge(signer::address_of(test_addr)), TEST_SUCCESS);
-    }
-
-    #[test(super_admin = @aave_acl, test_addr = @0x01)]
     fun test_is_flash_borrower(super_admin: &signer, test_addr: &signer) {
         // init the module
         test_init_module(super_admin);
@@ -197,7 +190,9 @@ module aave_acl::acl_manage_tests {
     }
 
     #[test(super_admin = @aave_acl, test_addr = @0x01)]
-    fun test_is_emergency_admin(super_admin: &signer, test_addr: &signer) {
+    fun test_is_emergency_admin(
+        super_admin: &signer, test_addr: &signer
+    ) {
         // init the module
         test_init_module(super_admin);
         // add the asset listing role to some address
@@ -294,6 +289,80 @@ module aave_acl::acl_manage_tests {
 
     // ========== TEST: GRANT ROLE + HAS ROLE ============
     #[test(super_admin = @aave_acl, test_addr = @0x01, other_addr = @0x02)]
+    fun test_grant_role(
+        super_admin: &signer, test_addr: &signer, other_addr: &signer
+    ) {
+        // init the module
+        test_init_module(super_admin);
+
+        // check emitted events
+        let emitted_events = emitted_events<RoleGranted>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
+
+        // 1. Test the role already exists
+        // set role admin
+        let role_admin = utf8(b"role_admin");
+        set_role_admin(super_admin, get_risk_admin_role_for_testing(), role_admin);
+
+        // check emitted events
+        let emitted_events = emitted_events<RoleAdminChanged>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
+
+        grant_role(super_admin, role_admin, signer::address_of(super_admin));
+
+        // check emitted events
+        let emitted_events = emitted_events<RoleGranted>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 2, TEST_SUCCESS);
+
+        // check the address has the role assigned
+        assert!(
+            has_role(role_admin, signer::address_of(super_admin)),
+            TEST_SUCCESS
+        );
+
+        // 2. Test the role not exist
+        // add the asset listing role to some address
+        grant_role(
+            super_admin,
+            get_pool_admin_role_for_testing(),
+            signer::address_of(test_addr)
+        );
+
+        // check emitted events
+        let emitted_events = emitted_events<RoleGranted>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 3, TEST_SUCCESS);
+
+        // Re-authorize the user role already exists
+        grant_role(
+            super_admin,
+            get_pool_admin_role_for_testing(),
+            signer::address_of(test_addr)
+        );
+
+        // check emitted events
+        let emitted_events = emitted_events<RoleGranted>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 3, TEST_SUCCESS);
+
+        // check the address has the role assigned
+        assert!(
+            has_role(get_pool_admin_role_for_testing(), signer::address_of(test_addr)),
+            TEST_SUCCESS
+        );
+        // check the address has no longer the role assigned
+        assert!(
+            !has_role(
+                get_pool_admin_role_for_testing(), signer::address_of(other_addr)
+            ),
+            TEST_SUCCESS
+        );
+    }
+
+    #[test(super_admin = @aave_acl, test_addr = @0x01, other_addr = @0x02)]
     fun test_has_role(
         super_admin: &signer, test_addr: &signer, other_addr: &signer
     ) {
@@ -334,12 +403,26 @@ module aave_acl::acl_manage_tests {
         // add the asset listing role to some address
         grant_role(super_admin, role_admin, signer::address_of(test_addr));
 
+        // now remove the role by other user and test_addr should have the role
+        revoke_role(test_addr, get_pool_admin_role_for_testing(), @0x41);
+
+        // check emitted events
+        let emitted_events = emitted_events<RoleRevoked>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 0, TEST_SUCCESS);
+
         // now remove the role
         revoke_role(
             test_addr,
             get_pool_admin_role_for_testing(),
             signer::address_of(test_addr)
         );
+
+        // check emitted events
+        let emitted_events = emitted_events<RoleRevoked>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
+
         // check the address has no longer the role assigned
         assert!(
             !has_role(get_pool_admin_role_for_testing(), signer::address_of(test_addr)),
@@ -378,22 +461,6 @@ module aave_acl::acl_manage_tests {
         remove_asset_listing_admin(super_admin, signer::address_of(test_addr));
         // check the address has no longer the role assigned
         assert!(!is_asset_listing_admin(signer::address_of(test_addr)), TEST_SUCCESS);
-    }
-
-    #[test(super_admin = @aave_acl, test_addr = @0x01)]
-    fun test_add_remove_bridge_admin(
-        super_admin: &signer, test_addr: &signer
-    ) {
-        // init the module
-        test_init_module(super_admin);
-        // add the asset listing role to some address
-        add_bridge(super_admin, signer::address_of(test_addr));
-        // check the address has the role assigned
-        assert!(is_bridge(signer::address_of(test_addr)), TEST_SUCCESS);
-        // remove pool admin
-        remove_bridge(super_admin, signer::address_of(test_addr));
-        // check the address has no longer the role assigned
-        assert!(!is_bridge(signer::address_of(test_addr)), TEST_SUCCESS);
     }
 
     #[test(super_admin = @aave_acl, test_addr = @0x01)]
@@ -504,6 +571,15 @@ module aave_acl::acl_manage_tests {
             ),
             TEST_SUCCESS
         );
+
+        let acl_fund_admin = @0x33;
+        // set fund admin
+        add_admin_controlled_ecosystem_reserve_funds_admin(super_admin, acl_fund_admin);
+        // check the address has the role assigned
+        assert!(
+            is_admin_controlled_ecosystem_reserve_funds_admin(acl_fund_admin),
+            TEST_SUCCESS
+        );
     }
 
     #[test(super_admin = @aave_acl, test_addr = @0x01)]
@@ -524,6 +600,114 @@ module aave_acl::acl_manage_tests {
         // check the address has no longer the role assigned
         assert!(
             !is_rewards_controller_admin(signer::address_of(test_addr)),
+            TEST_SUCCESS
+        );
+    }
+
+    #[test(super_admin = @aave_acl)]
+    fun test_roles_initialized(super_admin: &signer) {
+        test_init_module(super_admin);
+        assert_roles_initialized_for_testing()
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 1004, location = aave_acl::acl_manage)]
+    fun test_roles_not_initialized_expected_failure() {
+        assert_roles_initialized_for_testing();
+    }
+
+    #[test]
+    fun test_default_admin_role() {
+        assert!(default_admin_role() == utf8(b"DEFAULT_ADMIN"), TEST_SUCCESS)
+    }
+
+    #[test(super_admin = @aave_acl)]
+    fun test_get_role_admin(super_admin: &signer) {
+        test_init_module(super_admin);
+        assert!(
+            get_role_admin(get_pool_admin_role_for_testing()) == default_admin_role(),
+            TEST_SUCCESS
+        );
+
+        let role_admin = utf8(b"role_admin");
+        // add role admin
+        set_role_admin(super_admin, get_pool_admin_role_for_testing(), role_admin);
+        assert!(
+            get_role_admin(get_pool_admin_role_for_testing()) == role_admin,
+            TEST_SUCCESS
+        );
+        // update role admin
+        set_role_admin(super_admin, get_pool_admin_role_for_testing(), role_admin);
+        assert!(
+            get_role_admin(get_pool_admin_role_for_testing()) == role_admin,
+            TEST_SUCCESS
+        )
+    }
+
+    #[test(super_admin = @aave_acl, user = @0x01)]
+    fun test_renounce_role(super_admin: &signer, user: &signer) {
+        test_init_module(super_admin);
+        // Define the role as a string
+        let role = utf8(b"admin_role");
+
+        // 1. Grant the role to the user account
+        grant_role(super_admin, role, signer::address_of(user));
+        assert!(has_role(role, signer::address_of(user)), TEST_SUCCESS);
+
+        // 2. Attempt to renounce the role by the correct user
+        renounce_role(user, role, signer::address_of(user));
+
+        // check emitted events
+        let emitted_events = emitted_events<RoleRevoked>();
+        // make sure event of type was emitted
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
+
+        assert!(!has_role(role, signer::address_of(user)), TEST_SUCCESS);
+    }
+
+    #[test(super_admin = @aave_acl, user = @0x01)]
+    #[expected_failure(abort_code = 1003, location = aave_acl::acl_manage)]
+    fun test_renounce_role_expected_failure(
+        super_admin: &signer, user: &signer
+    ) {
+        test_init_module(super_admin);
+        // Define the role as a string
+        let role = utf8(b"admin_role");
+
+        // 1. Grant the role to the user account
+        grant_role(super_admin, role, signer::address_of(user));
+        assert!(has_role(role, signer::address_of(user)), TEST_SUCCESS);
+
+        // 2. Attempt to renounce the role by an unauthorized signer
+        renounce_role(super_admin, role, signer::address_of(user));
+        assert!(has_role(role, signer::address_of(user)), TEST_SUCCESS);
+    }
+
+    #[test(super_admin = @aave_acl, user = @0x01)]
+    #[expected_failure(abort_code = 1002, location = aave_acl::acl_manage)]
+    fun test_only_role_expected_failure(
+        super_admin: &signer, user: &signer
+    ) {
+        test_init_module(super_admin);
+        // Define the role as a string
+        let role = utf8(b"role");
+        let admin_role = utf8(b"admin_role");
+
+        let user_address = signer::address_of(user);
+        // 1. Set role admin
+        set_role_admin(super_admin, role, admin_role);
+
+        // 2. When super_admin is not set as a role administrator, directly authorize other users
+        grant_role(super_admin, role, user_address);
+    }
+
+    #[test(super_admin = @aave_acl)]
+    fun test_default_admin_role_is_granted_on_module_init(
+        super_admin: &signer
+    ) {
+        test_init_module(super_admin);
+        assert!(
+            has_role(default_admin_role(), signer::address_of(super_admin)),
             TEST_SUCCESS
         );
     }

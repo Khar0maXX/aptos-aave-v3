@@ -18,7 +18,7 @@ describe("Repay Test", () => {
     const { users, dai } = testEnv;
     const user = users[0];
     try {
-      await Transaction(aptos, user, RepayFuncAddr, [dai, 0, 1, user.accountAddress.toString(), false]);
+      await Transaction(aptos, user, RepayFuncAddr, [dai, 0, 2, user.accountAddress.toString()]);
     } catch (err) {
       expect(err.toString().includes("validation_logic: 0x1a")).toBe(true);
     }
@@ -58,9 +58,8 @@ describe("Repay Test", () => {
       await Transaction(aptos, user, RepayFuncAddr, [
         aave,
         aaveDepositAmount,
-        1,
+        2,
         user.accountAddress.toString(),
-        false,
       ]);
     } catch (err) {
       expect(err.toString().includes("validation_logic: 0x1b")).toBe(true);
@@ -97,10 +96,10 @@ describe("Repay Test", () => {
 
     const userBorrowAmount = 250 * 10 ** daiDecimals;
     // user borrow dai
-    await Transaction(aptos, user, BorrowFuncAddr, [dai, user.accountAddress.toString(), userBorrowAmount, 1, 0, true]);
+    await Transaction(aptos, user, BorrowFuncAddr, [dai, userBorrowAmount, 2, 0, user.accountAddress.toString()]);
 
     try {
-      await Transaction(aptos, user, RepayFuncAddr, [dai, userBorrowAmount, 2, user.accountAddress.toString(), false]);
+      await Transaction(aptos, user, RepayFuncAddr, [dai, userBorrowAmount, 2, user.accountAddress.toString()]);
     } catch (err) {
       // console.log('err:', err.toString())
       expect(err.toString().includes("validation_logic: 0x27")).toBe(true);
@@ -116,7 +115,7 @@ describe("Repay Test", () => {
     const repayAmount = 2 * 10 ** usdcDecimals;
     // console.log("user1:", user1.accountAddress.toString());
     try {
-      await Transaction(aptos, user1, RepayFuncAddr, [usdc, repayAmount, 1, user1.accountAddress.toString(), false]);
+      await Transaction(aptos, user1, RepayFuncAddr, [usdc, repayAmount, 2, user1.accountAddress.toString()]);
     } catch (err) {
       // console.log("err:", err.toString());
       expect(err.toString().includes("validation_logic: 0x27")).toBe(true);

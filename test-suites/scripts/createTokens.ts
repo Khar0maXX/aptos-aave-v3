@@ -6,15 +6,21 @@ import {
   AAAVE,
   AAVE,
   ADAI,
+  ALINK,
   AUSDC,
+  AWBTC,
   AWETH,
   DAI,
+  LINK,
   UnderlyingManager,
   USDC,
   VAAVE,
   VDAI,
+  VLINK,
   VUSDC,
+  VWBTC,
   VWETH,
+  WBTC,
   WETH,
 } from "../configs/tokens";
 
@@ -32,6 +38,7 @@ interface UnderlyingToken {
   metadataAddress: AccountAddress;
   accountAddress: AccountAddress;
 }
+
 interface AToken {
   name: string;
   symbol: string;
@@ -81,6 +88,22 @@ export const underlyingTokens: Array<UnderlyingToken> = [
     metadataAddress: AccountAddress.ZERO,
     accountAddress: AccountAddress.ZERO,
   },
+  {
+    symbol: LINK,
+    name: LINK,
+    decimals: 8,
+    treasury: TREASURY,
+    metadataAddress: AccountAddress.ZERO,
+    accountAddress: AccountAddress.ZERO,
+  },
+  {
+    symbol: WBTC,
+    name: WBTC,
+    decimals: 8,
+    treasury: TREASURY,
+    metadataAddress: AccountAddress.ZERO,
+    accountAddress: AccountAddress.ZERO,
+  }
 ];
 
 export const aTokens: Array<AToken> = [
@@ -112,6 +135,20 @@ export const aTokens: Array<AToken> = [
     metadataAddress: AccountAddress.ZERO,
     accountAddress: AccountAddress.ZERO,
   },
+  {
+    symbol: ALINK,
+    name: ALINK,
+    underlyingSymbol: LINK,
+    metadataAddress: AccountAddress.ZERO,
+    accountAddress: AccountAddress.ZERO,
+  },
+  {
+    symbol: AWBTC,
+    name: AWBTC,
+    underlyingSymbol: WBTC,
+    metadataAddress: AccountAddress.ZERO,
+    accountAddress: AccountAddress.ZERO,
+  }
 ];
 
 export const varTokens: Array<VarToken> = [
@@ -143,6 +180,21 @@ export const varTokens: Array<VarToken> = [
     metadataAddress: AccountAddress.ZERO,
     accountAddress: AccountAddress.ZERO,
   },
+
+  {
+    symbol: VLINK,
+    name: VLINK,
+    underlyingSymbol: LINK,
+    metadataAddress: AccountAddress.ZERO,
+    accountAddress: AccountAddress.ZERO,
+  },
+  {
+    symbol: VWBTC,
+    name: VWBTC,
+    underlyingSymbol: WBTC,
+    metadataAddress: AccountAddress.ZERO,
+    accountAddress: AccountAddress.ZERO,
+  }
 ];
 
 export async function createTokens() {

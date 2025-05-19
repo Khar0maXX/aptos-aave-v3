@@ -1,6 +1,10 @@
 import { BigNumber } from "@ethersproject/bignumber";
 import "./wadraymath";
 
+export interface Object {
+  inner: string;
+}
+
 export interface Metadata {
   inner: string;
 }
@@ -33,7 +37,6 @@ export interface ReserveData {
   aTokenAddress: string;
   lastUpdateTimestamp: BigNumber;
   liquidityRate: BigNumber;
-  unbacked: BigNumber;
   accruedToTreasuryScaled: BigNumber;
   [key: string]: BigNumber | string;
 }

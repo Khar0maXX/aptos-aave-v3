@@ -1,4 +1,6 @@
-/// This provides a framework for uploading large packages to standard accounts or objects.
+/// @title Large Packages Uploader
+/// @author Aptos
+/// @notice This provides a framework for uploading large packages to standard accounts or objects.
 /// In each pass, the caller pushes more code by calling `stage_code_chunk`.
 /// In the final call, the caller can use `stage_code_chunk_and_publish_to_account`, `stage_code_chunk_and_publish_to_object`, or
 /// `stage_code_chunk_and_upgrade_object_code` to upload the final data chunk and publish or upgrade the package on-chain.
@@ -9,6 +11,7 @@
 /// `StagingArea.last_module_idx`, it expects each index to be present in the `StagingArea.code` SmartTable.
 /// Any missing index in this range will cause the function to fail.
 module aave_large_packages::large_packages {
+    // imports
     use std::error;
     use std::signer;
     use std::vector;
@@ -18,17 +21,29 @@ module aave_large_packages::large_packages {
     use aptos_framework::object::{Object};
     use aptos_framework::object_code_deployment;
 
-    /// code_indices and code_chunks should be the same length.
+    // Error constants
+    /// @notice Error code when code_indices and code_chunks have different lengths
     const ECODE_MISMATCH: u64 = 1;
-    /// Object reference should be provided when upgrading object code.
+    /// @notice Error code when object reference is missing when upgrading object code
     const EMISSING_OBJECT_REFERENCE: u64 = 2;
 
+    // Structs
+    /// @notice Storage for staging package code before publishing
     struct StagingArea has key {
+        /// @dev Serialized metadata for the package
         metadata_serialized: vector<u8>,
+        /// @dev Map of code chunks indexed by position
         code: SmartTable<u64, vector<u8>>,
+        /// @dev The highest module index encountered
         last_module_idx: u64
     }
 
+    // Public entry functions
+    /// @notice Stages a chunk of code for later publishing
+    /// @param owner The account that will store the staging area
+    /// @param metadata_chunk Metadata for the package (or empty vector if not the first chunk)
+    /// @param code_indices Indices indicating the position of each code chunk
+    /// @param code_chunks The actual code chunks to stage
     public entry fun stage_code_chunk(
         owner: &signer,
         metadata_chunk: vector<u8>,
@@ -43,6 +58,11 @@ module aave_large_packages::large_packages {
         );
     }
 
+    /// @notice Stages the final code chunk and publishes the package to an account
+    /// @param owner The account that will own the package
+    /// @param metadata_chunk Final metadata for the package (or empty vector)
+    /// @param code_indices Indices indicating the position of each code chunk
+    /// @param code_chunks The actual code chunks to stage
     public entry fun stage_code_chunk_and_publish_to_account(
         owner: &signer,
         metadata_chunk: vector<u8>,
@@ -60,6 +80,11 @@ module aave_large_packages::large_packages {
         cleanup_staging_area(owner);
     }
 
+    /// @notice Stages the final code chunk and publishes the package to an object
+    /// @param owner The account that will own the object
+    /// @param metadata_chunk Final metadata for the package (or empty vector)
+    /// @param code_indices Indices indicating the position of each code chunk
+    /// @param code_chunks The actual code chunks to stage
     public entry fun stage_code_chunk_and_publish_to_object(
         owner: &signer,
         metadata_chunk: vector<u8>,
@@ -77,6 +102,12 @@ module aave_large_packages::large_packages {
         cleanup_staging_area(owner);
     }
 
+    /// @notice Stages the final code chunk and upgrades an existing object package
+    /// @param owner The account that owns the object
+    /// @param metadata_chunk Final metadata for the package (or empty vector)
+    /// @param code_indices Indices indicating the position of each code chunk
+    /// @param code_chunks The actual code chunks to stage
+    /// @param code_object The object with the PackageRegistry to upgrade
     public entry fun stage_code_chunk_and_upgrade_object_code(
         owner: &signer,
         metadata_chunk: vector<u8>,
@@ -95,6 +126,21 @@ module aave_large_packages::large_packages {
         cleanup_staging_area(owner);
     }
 
+    /// @notice Cleans up the staging area after publishing or if aborting the process
+    /// @param owner The account that owns the staging area
+    public entry fun cleanup_staging_area(owner: &signer) acquires StagingArea {
+        let StagingArea { metadata_serialized: _, code, last_module_idx: _ } =
+            move_from<StagingArea>(signer::address_of(owner));
+        smart_table::destroy(code);
+    }
+
+    // Helper functions
+    /// @dev Internal function to stage a code chunk
+    /// @param owner The account that will store the staging area
+    /// @param metadata_chunk Metadata for the package (or empty vector if not the first chunk)
+    /// @param code_indices Indices indicating the position of each code chunk
+    /// @param code_chunks The actual code chunks to stage
+    /// @return Reference to the staging area
     inline fun stage_code_chunk_internal(
         owner: &signer,
         metadata_chunk: vector<u8>,
@@ -146,6 +192,9 @@ module aave_large_packages::large_packages {
         staging_area
     }
 
+    /// @dev Publishes the assembled package to an account
+    /// @param publisher The account that will own the package
+    /// @param staging_area The staging area containing the code
     inline fun publish_to_account(
         publisher: &signer, staging_area: &mut StagingArea
     ) {
@@ -153,6 +202,9 @@ module aave_large_packages::large_packages {
         code::publish_package_txn(publisher, staging_area.metadata_serialized, code);
     }
 
+    /// @dev Publishes the assembled package to an object
+    /// @param publisher The account that will own the object
+    /// @param staging_area The staging area containing the code
     inline fun publish_to_object(
         publisher: &signer, staging_area: &mut StagingArea
     ) {
@@ -162,6 +214,10 @@ module aave_large_packages::large_packages {
         );
     }
 
+    /// @dev Upgrades an existing object package
+    /// @param publisher The account that owns the object
+    /// @param staging_area The staging area containing the code
+    /// @param code_object The object with the PackageRegistry to upgrade
     inline fun upgrade_object_code(
         publisher: &signer,
         staging_area: &mut StagingArea,
@@ -176,6 +232,9 @@ module aave_large_packages::large_packages {
         );
     }
 
+    /// @dev Assembles all module code into the final format for publishing
+    /// @param staging_area The staging area containing the code
+    /// @return Vector of assembled code modules
     inline fun assemble_module_code(staging_area: &mut StagingArea): vector<vector<u8>> {
         let last_module_idx = staging_area.last_module_idx;
         let code = vector[];
@@ -188,11 +247,5 @@ module aave_large_packages::large_packages {
             i = i + 1;
         };
         code
-    }
-
-    public entry fun cleanup_staging_area(owner: &signer) acquires StagingArea {
-        let StagingArea { metadata_serialized: _, code, last_module_idx: _ } =
-            move_from<StagingArea>(signer::address_of(owner));
-        smart_table::destroy(code);
     }
 }

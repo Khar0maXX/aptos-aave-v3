@@ -10,9 +10,34 @@ env:
   CARGO_TERM_COLOR: always
   GITHUB_ACTIONS: true
   APTOS_NETWORK: local
-  UPGRADE_CONTRACTS: false
+  MOVE_VERSION: 2.1
+  COMPILER_VERSION: 2.0
+  UPGRADE_CONTRACTS: true
   ARTIFACTS_LEVEL: all
-  DEFAULT_FUND_AMOUNT: 40000000
+  DEFAULT_FUND_AMOUNT: 100000000
+  DEFAULT_FUNDER_PRIVATE_KEY: ${{ secrets.GH_DEFAULT_FUNDER_PRIVATE_KEY }}
+
+  # aave profiles
+  AAVE_ACL_PRIVATE_KEY: ${{ secrets.GH_AAVE_ACL_PRIVATE_KEY }}
+  AAVE_CONFIG_PRIVATE_KEY: ${{ secrets.GH_AAVE_CONFIG_PRIVATE_KEY }}
+  AAVE_MATH_PRIVATE_KEY: ${{ secrets.GH_AAVE_MATH_PRIVATE_KEY }}
+  AAVE_ORACLE_PRIVATE_KEY: ${{ secrets.GH_AAVE_ORACLE_PRIVATE_KEY }}
+  AAVE_POOL_PRIVATE_KEY: ${{ secrets.GH_AAVE_POOL_PRIVATE_KEY }}
+  A_TOKENS_PRIVATE_KEY: ${{ secrets.GH_A_TOKENS_PRIVATE_KEY }}
+  AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY: ${{ secrets.GH_AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY }}
+  VARIABLE_TOKENS_PRIVATE_KEY: ${{ secrets.GH_VARIABLE_TOKENS_PRIVATE_KEY }}
+  AAVE_LARGE_PACKAGES_PRIVATE_KEY: ${{ secrets.GH_AAVE_LARGE_PACKAGES_PRIVATE_KEY }}
+  AAVE_DATA_PRIVATE_KEY: ${{ secrets.GH_AAVE_DATA_PRIVATE_KEY }}
+  AAVE_DATA_FEEDS_PRIVATE_KEY: ${{ secrets.GH_AAVE_DATA_FEEDS_PRIVATE_KEY }}
+  AAVE_PLATFORM_PRIVATE_KEY: ${{ secrets.GH_AAVE_PLATFORM_PRIVATE_KEY }}
+
+  # test profiles
+  TEST_ACCOUNT_0_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_0_PRIVATE_KEY }}
+  TEST_ACCOUNT_1_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_1_PRIVATE_KEY }}
+  TEST_ACCOUNT_2_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_2_PRIVATE_KEY }}
+  TEST_ACCOUNT_3_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_3_PRIVATE_KEY }}
+  TEST_ACCOUNT_4_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_4_PRIVATE_KEY }}
+  TEST_ACCOUNT_5_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_5_PRIVATE_KEY }}
 
 jobs:
 
@@ -25,27 +50,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-
       - name: Install dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y libudev-dev lld libdw-dev
 
       - name: Install Aptos CLI
-        run: |
-          curl -fsSL "https://aptos.dev/scripts/install_cli.py" | python3
-          aptos --version  # Verify that Aptos CLI is installed
+        uses: ./.github/actions/install-aptos-cli
+        with:
+          version: "6.2.0"
 
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v4
         name: Install pnpm
         with:
-          version: 8
+          version: 9
           run_install: false
 
       - name: Get pnpm store directory
@@ -92,19 +115,19 @@ jobs:
       - name: Run Aptos Fund Test Profiles
         run: make fund-test-profiles
 
-      - name: Run Aptos Compile All Contracts
-        run: make compile-all
+      - name: Print Aptos Config File
+        run: cat ./.aptos/config.yaml
 
       - name: Run Aptos Publish All Contracts
         run: make publish-all
 
-      # - name: Run init test data
-      #   run: pnpm run deploy:init-data
-      #   working-directory: test-suites
+      - name: Run init test data
+        run: pnpm deploy:init-data
+        working-directory: test-suites
 
-      # - name: Run integration tests logic
-      #   run: pnpm run test:logic
-      #   working-directory: test-suites
+      - name: Run integration tests logic
+        run: pnpm test:all
+        working-directory: test-suites
 
       - name: Terminate Aptos Local Testnet
         if: always()

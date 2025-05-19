@@ -1,0 +1,81 @@
+name: Get Merged PRs
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: true
+        default: '2024-12-01'
+      end_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: true
+        default: '2025-01-31'
+
+jobs:
+  get-prs:
+    runs-on: aave-latest
+    permissions:
+      pull-requests: read
+      contents: read
+
+    steps:
+      - name: Set date parameters
+        id: set-params
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "START_DATE=${{ github.event.inputs.start_date }}T00:00:00Z" >> $GITHUB_ENV
+            echo "END_DATE=${{ github.event.inputs.end_date }}T23:59:59Z" >> $GITHUB_ENV
+          else
+            # For PR trigger, use the last 30 days as default
+            echo "START_DATE=$(date -d '30 days ago' '+%Y-%m-%dT00:00:00Z')" >> $GITHUB_ENV
+            echo "END_DATE=$(date '+%Y-%m-%dT23:59:59Z')" >> $GITHUB_ENV
+          fi
+
+      - name: Get merged PRs
+        id: get-prs
+        run: |
+          REPO="${{ github.repository }}"
+
+          echo "## Merged PRs between $START_DATE and $END_DATE" > pr_report.md
+
+          PAGE=1
+          MERGED_PRS=0
+
+          while true; do
+            RESPONSE=$(curl -s \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$REPO/pulls?state=closed&per_page=100&sort=updated&direction=desc&page=$PAGE")
+
+            # Break if empty response or error
+            if [ "$(echo "$RESPONSE" | jq '. | length')" = "0" ] || [ "$(echo "$RESPONSE" | jq 'has("message")')" = "true" ]; then
+              break
+            fi
+
+            # Process PRs
+            PR_COUNT=$(echo "$RESPONSE" | jq '. | length')
+            echo "Processing page $PAGE with $PR_COUNT PRs..."
+
+            echo "$RESPONSE" | jq -r '.[] | select(.merged_at != null) | select(.merged_at >= "'$START_DATE'" and .merged_at <= "'$END_DATE'") | "*  #\(.number) - [\(.title)](\(.html_url)) by @\(.user.login) (Merged: \(.merged_at))\n  Assignee: \(if .assignee then "@" + .assignee.login else "None" end)"' >> pr_report.md
+
+            CURRENT_MERGED=$(echo "$RESPONSE" | jq '[.[] | select(.merged_at != null) | select(.merged_at >= "'$START_DATE'" and .merged_at <= "'$END_DATE'")] | length')
+            MERGED_PRS=$((MERGED_PRS + CURRENT_MERGED))
+
+            PAGE=$((PAGE + 1))
+
+            # Check if we've processed all PRs
+            if [ "$PR_COUNT" -lt 100 ]; then
+              break
+            fi
+          done
+
+          echo "Total merged PRs found: $MERGED_PRS" >> pr_report.md
+
+          cat pr_report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload PR report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-report
+          path: pr_report.md

@@ -3,12 +3,10 @@ import { AptosContractWrapperBaseClass } from "./baseClass";
 import {
   addPoolAdminFuncAddr,
   addAssetListingAdminFuncAddr,
-  addBridgeFuncAddr,
   addEmergencyAdminFuncAddr,
   addFlashBorrowerFuncAddr,
   addRiskAdminFuncAddr,
   getAssetListingAdminRoleFuncAddr,
-  getBridgeRoleFuncAddr,
   getEmergencyAdminRoleFuncAddr,
   getFlashBorrowerRoleFuncAddr,
   getPoolAdminRoleFuncAddr,
@@ -16,20 +14,17 @@ import {
   grantRoleFuncAddr,
   hasRoleFuncAddr,
   isAssetListingAdminFuncAddr,
-  isBridgeFuncAddr,
   isEmergencyAdminFuncAddr,
   isFlashBorrowerFuncAddr,
   isPoolAdminFuncAddr,
   isRiskAdminFuncAddr,
   removeAssetListingAdminFuncAddr,
-  removeBridgeFuncAddr,
   removeEmergencyAdminFuncAddr,
   removeFlashBorrowerFuncAddr,
   removePoolAdminFuncAddr,
   removeRiskAdminFuncAddr,
   renounceRoleFuncAddr,
   revokeRoleFuncAddr,
-  grantDefaultAdminRole,
   defaultAdminRole,
   getRoleAdmin,
   setRoleAdmin,
@@ -105,19 +100,6 @@ export class AclClient extends AptosContractWrapperBaseClass {
     return resp as boolean;
   }
 
-  public async addBridge(user: AccountAddress): Promise<CommittedTransactionResponse> {
-    return this.sendTxAndAwaitResponse(addBridgeFuncAddr, [user]);
-  }
-
-  public async removeBridge(user: AccountAddress): Promise<CommittedTransactionResponse> {
-    return this.sendTxAndAwaitResponse(removeBridgeFuncAddr, [user]);
-  }
-
-  public async isBridge(user: AccountAddress): Promise<boolean> {
-    const [resp] = await this.callViewMethod(isBridgeFuncAddr, [user]);
-    return resp as boolean;
-  }
-
   public async addAssetListingAdmin(user: AccountAddress): Promise<CommittedTransactionResponse> {
     return this.sendTxAndAwaitResponse(addAssetListingAdminFuncAddr, [user]);
   }
@@ -151,18 +133,9 @@ export class AclClient extends AptosContractWrapperBaseClass {
     return resp as string;
   }
 
-  public async getBridgeRole(): Promise<string> {
-    const [resp] = await this.callViewMethod(getBridgeRoleFuncAddr, []);
-    return resp as string;
-  }
-
   public async getAssetListingAdminRole(): Promise<string> {
     const [resp] = await this.callViewMethod(getAssetListingAdminRoleFuncAddr, []);
     return resp as string;
-  }
-
-  public async grantDefaultRoleAdmin(): Promise<CommittedTransactionResponse> {
-    return this.sendTxAndAwaitResponse(grantDefaultAdminRole, []);
   }
 
   public async getDefaultAdminRole(): Promise<string> {

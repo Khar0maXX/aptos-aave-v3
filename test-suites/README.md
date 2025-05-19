@@ -7,7 +7,7 @@ cd test-suites
 pnpm i
 ```
 
-## 2. Create test Acoount
+## 2. Create test Account
 
 ```bash
 cd crest

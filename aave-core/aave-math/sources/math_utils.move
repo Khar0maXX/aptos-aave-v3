@@ -1,42 +1,40 @@
+/// @title Math Utilities
+/// @author Aave
+/// @notice Utility functions for mathematical operations and calculations
 module aave_math::math_utils {
+    // imports
     use aptos_framework::timestamp;
-
     use aave_config::error_config;
-
     use aave_math::wad_ray_math;
 
+    // Global Constants
+    /// @notice Maximum value for u256
     const U256_MAX: u256 =
         0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
 
-    /// @dev Ignoring leap years
+    /// @notice Seconds per year (ignoring leap years)
     const SECONDS_PER_YEAR: u256 = 365 * 24 * 3600;
 
-    /// Maximum percentage factor (100.00%)
+    /// @notice Maximum percentage factor (100.00%)
     const PERCENTAGE_FACTOR: u256 = 10000;
 
-    /// Half percentage factor (50.00%)
+    /// @notice Half percentage factor (50.00%)
     const HALF_PERCENTAGE_FACTOR: u256 = 5 * 1000;
 
+    // Public functions
+    /// @notice Returns the maximum value for u256
+    /// @return The maximum u256 value
     public fun u256_max(): u256 {
         U256_MAX
     }
 
-    #[test_only]
-    public fun get_seconds_per_year_for_testing(): u256 {
-        SECONDS_PER_YEAR
+    /// @notice Returns the percentage factor (10000)
+    /// @return The percentage factor
+    public fun get_percentage_factor(): u256 {
+        PERCENTAGE_FACTOR
     }
 
-    #[test_only]
-    public fun get_half_percentage_factor_for_testing(): u256 {
-        HALF_PERCENTAGE_FACTOR
-    }
-
-    #[test_only]
-    public fun get_u256_max_for_testing(): u256 {
-        u256_max()
-    }
-
-    /// @dev Function to calculate the interest accumulated using a linear interest rate formula
+    /// @notice Calculates the interest accumulated using a linear interest rate formula
     /// @param rate The interest rate, in ray
     /// @param last_update_timestamp The timestamp of the last update of the interest
     /// @return The interest rate linearly accumulated during the timeDelta, in ray
@@ -48,10 +46,13 @@ module aave_math::math_utils {
         wad_ray_math::ray() + (result / SECONDS_PER_YEAR)
     }
 
-    /// @dev Function to calculate the interest using a compounded interest rate formula
-    /// To avoid expensive exponentiation, the calculation is performed using a binomial approximation:
-    ///
-    /// (1+x)^n = 1+n*x+[n/2*(n-1)]*x^2+[n/6*(n-1)*(n-2)*x^3...
+    /// @notice Calculates the interest using a compounded interest rate formula
+    /// @dev To avoid expensive exponentiation, the calculation is performed using a taylor approximation:
+    /// time_elapsed_in_seconds s = n*t
+    /// t = s/n, where n is the number of seconds in a year
+    /// r = rate, annual rate as input parameter
+    /// (1+r/n)^(n*t) = e^(r*t)
+    /// e^(r*t) = 1 + r*t + (r*t)^2/2 + (r*t)^3/6 + ...
     ///
     /// The approximation slightly underpays liquidity providers and undercharges borrowers, with the advantage of great
     /// gas cost reductions. The whitepaper contains reference to the approximation and a table showing the margin of
@@ -59,29 +60,26 @@ module aave_math::math_utils {
     ///
     /// @param rate The interest rate, in ray
     /// @param last_update_timestamp The timestamp of the last update of the interest
+    /// @param current_timestamp The current timestamp at the time of calling the method
     /// @return The interest rate compounded during the timeDelta, in ray
     public fun calculate_compounded_interest(
         rate: u256, last_update_timestamp: u64, current_timestamp: u64
     ): u256 {
-        let exp = ((current_timestamp - last_update_timestamp) as u256);
-        if (exp == 0) {
+        assert!(
+            current_timestamp >= last_update_timestamp, error_config::get_eoverflow()
+        );
+        // s is the time interval in seconds
+        let s = ((current_timestamp - last_update_timestamp) as u256);
+        if (s == 0) {
             return wad_ray_math::ray()
         };
-
-        let exp_minus_one = exp - 1;
-        let exp_minus_two = if (exp > 2) exp - 2 else 0;
-        let base_power_two =
-            wad_ray_math::ray_mul(rate, rate) / (SECONDS_PER_YEAR * SECONDS_PER_YEAR);
-        let base_power_three =
-            wad_ray_math::ray_mul(base_power_two, rate) / SECONDS_PER_YEAR;
-        let second_term = (exp * exp_minus_one * base_power_two) / 2;
-        let third_term = (exp * exp_minus_one * exp_minus_two * base_power_three) / 6;
-
-        wad_ray_math::ray() + (rate * exp) / SECONDS_PER_YEAR + second_term
-            + third_term
+        let x = s * rate / SECONDS_PER_YEAR;
+        // 1 + r*t + (r*t)^2/2 + (r*t)^3/6 = 1 + r*t + (r*t)*((r*t)/2 + (r*t)*((r*t)/6))
+        wad_ray_math::ray() + x
+            + wad_ray_math::ray_mul(x, (x / 2 + wad_ray_math::ray_mul(x, x / 6)))
     }
 
-    /// @dev Calculates the compounded interest between the timestamp of the last update and the current block timestamp
+    /// @notice Calculates the compounded interest between the timestamp of the last update and the current block timestamp
     /// @param rate The interest rate (in ray)
     /// @param last_update_timestamp The timestamp from which the interest accumulation needs to be calculated
     /// @return The interest rate compounded between lastUpdateTimestamp and current block timestamp, in ray
@@ -93,19 +91,10 @@ module aave_math::math_utils {
         )
     }
 
-    public fun get_percentage_factor(): u256 {
-        PERCENTAGE_FACTOR
-    }
-
-    #[test_only]
-    public fun get_percentage_factor_for_testing(): u256 {
-        PERCENTAGE_FACTOR
-    }
-
     /// @notice Executes a percentage multiplication
     /// @param value The value of which the percentage needs to be calculated
     /// @param percentage The percentage of the value to be calculated
-    /// @return result value percentmul percentage
+    /// @return result The value multiplied by the percentage and divided by the percentage factor
     public fun percent_mul(value: u256, percentage: u256): u256 {
         if (value == 0 || percentage == 0) {
             return 0
@@ -120,22 +109,59 @@ module aave_math::math_utils {
     /// @notice Executes a percentage division
     /// @param value The value of which the percentage needs to be calculated
     /// @param percentage The percentage of the value to be calculated
-    /// @return result value percentdiv percentage
+    /// @return result The value multiplied by the percentage factor and divided by the percentage
     public fun percent_div(value: u256, percentage: u256): u256 {
         assert!(percentage > 0, error_config::get_edivision_by_zero());
         assert!(
-            value <= (U256_MAX - HALF_PERCENTAGE_FACTOR) / PERCENTAGE_FACTOR,
+            value <= (U256_MAX - percentage / 2) / PERCENTAGE_FACTOR,
             error_config::get_eoverflow()
         );
         (value * PERCENTAGE_FACTOR + percentage / 2) / percentage
     }
 
-    // Get the power
+    /// @notice Calculates the power of a base to an exponent
+    /// @param base The base value
+    /// @param exponent The exponent value
+    /// @return The result of base raised to the power of exponent
     public fun pow(base: u256, exponent: u256): u256 {
         let result = 1;
-        for (_i in 0..exponent) {
-            result = result * base;
+        while (exponent > 0) {
+            if (exponent & 1 == 1) {
+                result *= base;
+            };
+
+            base = base * base;
+            exponent = exponent >> 1;
         };
         result
+    }
+
+    // Test-only functions
+    #[test_only]
+    /// @dev Returns the seconds per year value for testing
+    /// @return Seconds per year constant
+    public fun get_seconds_per_year_for_testing(): u256 {
+        SECONDS_PER_YEAR
+    }
+
+    #[test_only]
+    /// @dev Returns the half percentage factor for testing
+    /// @return Half percentage factor constant
+    public fun get_half_percentage_factor_for_testing(): u256 {
+        HALF_PERCENTAGE_FACTOR
+    }
+
+    #[test_only]
+    /// @dev Returns the maximum u256 value for testing
+    /// @return The maximum u256 value
+    public fun get_u256_max_for_testing(): u256 {
+        u256_max()
+    }
+
+    #[test_only]
+    /// @dev Returns the percentage factor for testing
+    /// @return The percentage factor constant
+    public fun get_percentage_factor_for_testing(): u256 {
+        PERCENTAGE_FACTOR
     }
 }

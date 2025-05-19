@@ -4,6 +4,7 @@ import { AclManager } from "./aclManage";
 import { AptosProvider } from "../wrappers/aptosProvider";
 import { aTokens, underlyingTokens, varTokens } from "../scripts/createTokens";
 import { AclClient } from "../clients/aclClient";
+import { getTokens } from "../scripts/getTokens";
 
 interface TestEnv {
   emergencyAdmin: Ed25519Account;
@@ -72,6 +73,9 @@ export async function getTestAccounts(): Promise<Ed25519Account[]> {
 }
 
 export async function initializeMakeSuite() {
+
+  await getTokens();
+
   // account manage
   testEnv.users = await getTestAccounts();
   // eslint-disable-next-line prefer-destructuring
@@ -96,7 +100,7 @@ export async function initializeMakeSuite() {
   // setup admins
   const isRiskAdmin = await aclClient.isRiskAdmin(testEnv.riskAdmin.accountAddress);
   if (!isRiskAdmin) {
-    await aclClient.addAssetListingAdmin(testEnv.riskAdmin.accountAddress);
+    await aclClient.addRiskAdmin(testEnv.riskAdmin.accountAddress);
   }
   const isEmergencyAdmin = await aclClient.isEmergencyAdmin(testEnv.emergencyAdmin.accountAddress);
   if (!isEmergencyAdmin) {

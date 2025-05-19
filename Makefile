@@ -3,23 +3,21 @@ ifndef GITHUB_ACTIONS
   -include .env
 endif
 
-# ===================== PROFILES ===================== #
+# ===================== PROFILES ====================== #
 
 # aave base profiles
 AAVE_BASE_PROFILES_KEY_MAP = aave_acl=$(AAVE_ACL_PRIVATE_KEY) \
                  aave_config=$(AAVE_CONFIG_PRIVATE_KEY) \
                  aave_math=$(AAVE_MATH_PRIVATE_KEY) \
-				 aave_rate=$(AAVE_RATE_PRIVATE_KEY) \
                  aave_oracle=$(AAVE_ORACLE_PRIVATE_KEY) \
                  aave_pool=$(AAVE_POOL_PRIVATE_KEY) \
                  a_tokens=$(A_TOKENS_PRIVATE_KEY) \
-                 underlying_tokens=$(UNDERLYING_TOKENS_PRIVATE_KEY) \
                  variable_tokens=$(VARIABLE_TOKENS_PRIVATE_KEY) \
                  aave_large_packages=$(AAVE_LARGE_PACKAGES_PRIVATE_KEY) \
                  aave_data=$(AAVE_DATA_PRIVATE_KEY)
 
 ifeq ($(APTOS_NETWORK), local)
-  AAVE_PROFILES_KEY_MAP = $(AAVE_BASE_PROFILES_KEY_MAP) data_feeds=$(AAVE_DATA_FEEDS_PRIVATE_KEY) platform=$(AAVE_PLATFORM_PRIVATE_KEY)
+  AAVE_PROFILES_KEY_MAP = $(AAVE_BASE_PROFILES_KEY_MAP) data_feeds=$(AAVE_DATA_FEEDS_PRIVATE_KEY) platform=$(AAVE_PLATFORM_PRIVATE_KEY) aave_mock_underlyings=$(AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY)
 else
   AAVE_PROFILES_KEY_MAP = $(AAVE_BASE_PROFILES_KEY_MAP)
 endif
@@ -95,6 +93,14 @@ local-testnet:
 	--faucet-port 8081 \
 	--performance
 
+local-testnet-with-indexer:
+	aptos node run-localnet \
+	--assume-yes \
+	--force-restart \
+	--faucet-port 8081 \
+	--performance \
+	--with-indexer-api
+
 local-testnet-docker:
 	aptos node run-localnet \
 	--force-restart \
@@ -121,9 +127,9 @@ test-all:
 	make test-acl
 	make test-config
 	make test-math
-	make test-rate
 	make test-chainlink-platform
 	make test-chainlink-data-feeds
+	make test-mock-underlyings
 	make test-oracle
 	make test-pool
 
@@ -189,6 +195,8 @@ compile-acl:
 	--save-metadata \
 	--package-dir "aave-acl" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}"
 
 publish-acl:
@@ -198,6 +206,8 @@ publish-acl:
 	--sender-account aave_acl \
 	--profile aave_acl \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
 	--gas-unit-price 100 \
 	--max-gas 10000
@@ -208,8 +218,18 @@ test-acl:
 	--skip-attribute-checks \
 	--package-dir "aave-acl" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
   	--coverage
+
+coverage-acl:
+	cd aave-core && aptos move coverage summary \
+	--skip-attribute-checks \
+	--package-dir "aave-acl" \
+	--skip-fetch-latest-git-deps \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
+	--csv 2>&1 | tee ../coverage/aave-acl.csv
 
 doc-acl:
 	cd aave-core && aptos move document \
@@ -232,6 +252,8 @@ compile-config:
 	--save-metadata \
 	--package-dir "aave-config" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}"
 
 publish-config:
@@ -241,6 +263,8 @@ publish-config:
 	--sender-account aave_config \
 	--profile aave_config \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
 	--gas-unit-price 100 \
 	--max-gas 50000
@@ -251,8 +275,18 @@ test-config:
 	--skip-attribute-checks \
 	--package-dir "aave-config" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
   	--coverage
+
+coverage-config:
+	cd aave-core && aptos move coverage summary \
+	--skip-attribute-checks \
+	--package-dir "aave-config" \
+	--skip-fetch-latest-git-deps \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
+	--csv 2>&1 | tee ../coverage/aave-config.csv
 
 doc-config:
 	cd aave-core && aptos move document \
@@ -275,6 +309,8 @@ compile-large-packages:
 	--save-metadata \
 	--package-dir "aave-large-packages" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}"
 
 publish-large-packages:
@@ -284,6 +320,8 @@ publish-large-packages:
 	--sender-account aave_large_packages \
 	--profile aave_large_packages \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
 	--gas-unit-price 100 \
 	--max-gas 10000
@@ -294,6 +332,8 @@ test-large-packages:
 	--skip-attribute-checks \
 	--package-dir "aave-large-packages" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
   	--coverage
 
@@ -318,6 +358,8 @@ compile-math:
 	--save-metadata \
 	--package-dir "aave-math" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}"
 
 publish-math:
@@ -327,6 +369,8 @@ publish-math:
 	--sender-account aave_math \
 	--profile aave_math \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
 	--gas-unit-price 100 \
 	--max-gas 10000
@@ -337,8 +381,18 @@ test-math:
 	--skip-attribute-checks \
 	--package-dir "aave-math" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
   	--coverage
+
+coverage-math:
+	cd aave-core && aptos move coverage summary \
+	--skip-attribute-checks \
+	--package-dir "aave-math" \
+	--skip-fetch-latest-git-deps \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
+	--csv 2>&1 | tee ../coverage/aave-math.csv
 
 doc-math:
 	cd aave-core && aptos move document \
@@ -353,49 +407,6 @@ fmt-math:
 	--emit-mode "overwrite" \
 	-v
 
-# ===================== PACKAGE AAVE-RATE ===================== #
-
-compile-rate:
-	cd aave-core && aptos move compile \
-	--included-artifacts $(ARTIFACTS_LEVEL) \
-	--save-metadata \
-	--package-dir "aave-rate" \
-	--skip-fetch-latest-git-deps \
-	--named-addresses "${AAVE_NAMED_ADDRESSES}"
-
-publish-rate:
-	cd aave-core && aptos move publish --assume-yes \
-	--package-dir "aave-rate" \
-	--included-artifacts $(ARTIFACTS_LEVEL) \
-	--sender-account aave_rate \
-	--profile aave_rate \
-	--skip-fetch-latest-git-deps \
-	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
-	--gas-unit-price 100 \
-	--max-gas 20000
-
-test-rate:
-	cd aave-core && aptos move test \
-	--ignore-compile-warnings \
-	--skip-attribute-checks \
-	--package-dir "aave-rate" \
-	--skip-fetch-latest-git-deps \
-	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
-  	--coverage
-
-doc-rate:
-	cd aave-core && aptos move document \
-	--skip-attribute-checks \
-	--package-dir "aave-rate" \
-	--named-addresses "${AAVE_NAMED_ADDRESSES}"
-
-fmt-rate:
-	aptos move fmt \
-	--package-path "aave-core/aave-rate" \
-	--config-path ./movefmt.toml \
-	--emit-mode "overwrite" \
-	-v
-
 # ===================== PACKAGE AAVE-DATA ===================== #
 
 compile-data:
@@ -404,6 +415,8 @@ compile-data:
 	--save-metadata \
 	--package-dir "aave-data" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}"
 
 publish-data:
@@ -413,7 +426,11 @@ publish-data:
 	--sender-account aave_data \
 	--profile aave_data \
 	--skip-fetch-latest-git-deps \
-	--named-addresses "${AAVE_NAMED_ADDRESSES}"
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
+	--gas-unit-price 100 \
+	--max-gas 50000
 
 test-data:
 	cd aave-core && aptos move test \
@@ -421,6 +438,8 @@ test-data:
 	--skip-attribute-checks \
 	--package-dir "aave-data" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
   	--coverage
 
@@ -439,6 +458,8 @@ compile-chainlink-platform:
     --save-metadata \
 	--package-dir "chainlink-platform" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}"
 
 test-chainlink-platform:
@@ -447,6 +468,8 @@ test-chainlink-platform:
 	--skip-attribute-checks \
 	--package-dir "chainlink-platform" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
   	--coverage
 
@@ -457,7 +480,11 @@ publish-chainlink-platform:
 	--sender-account platform \
 	--profile platform \
 	--skip-fetch-latest-git-deps \
-	--named-addresses "${AAVE_NAMED_ADDRESSES}"
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
+	--gas-unit-price 100 \
+	--max-gas 30000
 
 compile-chainlink-data-feeds:
 	cd aave-core && aptos move compile \
@@ -465,6 +492,8 @@ compile-chainlink-data-feeds:
     --save-metadata \
 	--package-dir "chainlink-data-feeds" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}"
 
 test-chainlink-data-feeds:
@@ -473,6 +502,8 @@ test-chainlink-data-feeds:
 	--skip-attribute-checks \
 	--package-dir "chainlink-data-feeds" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
   	--coverage
 
@@ -483,7 +514,60 @@ publish-chainlink-data-feeds:
 	--sender-account data_feeds \
 	--profile data_feeds \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
+	--gas-unit-price 100 \
+	--max-gas 30000
+
+# ===================== PACKAGE MOCK UNDERLYINGS ===================== #
+
+compile-mock-underlyings:
+	cd aave-core && aptos move compile \
+	--included-artifacts $(ARTIFACTS_LEVEL) \
+    --save-metadata \
+	--package-dir "aave-mock-underlyings" \
+	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}"
+
+test-mock-underlyings:
+	cd aave-core && aptos move test \
+	--ignore-compile-warnings \
+	--skip-attribute-checks \
+	--package-dir "aave-mock-underlyings" \
+	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
+  	--coverage
+
+publish-mock-underlyings:
+	cd aave-core && aptos move publish --assume-yes \
+	--package-dir "aave-mock-underlyings" \
+	--included-artifacts $(ARTIFACTS_LEVEL) \
+	--sender-account aave_mock_underlyings \
+	--profile aave_mock_underlyings \
+	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
+	--gas-unit-price 100 \
+	--max-gas 30000
+
+doc-mock-underlyings:
+	cd aave-core && aptos move document \
+	--skip-attribute-checks \
+	--package-dir "aave-mock-underlyings" \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}"
+
+fmt-mock-underlyings:
+	aptos move fmt \
+	--package-path "aave-core/aave-mock-underlyings" \
+	--config-path ./movefmt.toml \
+	--emit-mode "overwrite" \
+	-v
 
 # ===================== PACKAGE AAVE-ORACLE ===================== #
 
@@ -493,6 +577,8 @@ compile-oracle:
     --save-metadata \
 	--package-dir "aave-oracle" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}"
 
 publish-oracle:
@@ -502,9 +588,11 @@ publish-oracle:
 	--sender-account aave_oracle \
 	--profile aave_oracle \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
 	--gas-unit-price 100 \
-	--max-gas 30000
+	--max-gas 20000
 
 test-oracle:
 	cd aave-core && aptos move test \
@@ -512,8 +600,18 @@ test-oracle:
 	--skip-attribute-checks \
 	--package-dir "aave-oracle" \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
   	--coverage
+
+coverage-oracle:
+	cd aave-core && aptos move coverage summary \
+	--skip-attribute-checks \
+	--package-dir "aave-oracle" \
+	--skip-fetch-latest-git-deps \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
+	--csv 2>&1 | tee ../coverage/aave-oracle.csv
 
 doc-oracle:
 	cd aave-core && aptos move document \
@@ -535,6 +633,8 @@ compile-pool:
 	--included-artifacts $(ARTIFACTS_LEVEL) \
 	--save-metadata \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}"
 
 publish-pool:
@@ -544,9 +644,13 @@ publish-pool:
 	--sender-account aave_pool \
 	--profile aave_pool \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--large-packages-module-address "$(LARGE_PACKAGE_ADDRESS)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
-	--chunk-size 45000
+	--chunk-size 45000 \
+	--gas-unit-price 100 \
+	--max-gas 300000
 
 publish-pool-local:
 	cd test-suites && \
@@ -557,8 +661,17 @@ test-pool:
 	--ignore-compile-warnings \
 	--skip-attribute-checks \
 	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
 	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
   	--coverage
+
+coverage-pool:
+	cd aave-core && aptos move coverage summary \
+	--skip-attribute-checks \
+	--skip-fetch-latest-git-deps \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}" \
+	--csv 2>&1 | tee ../coverage/aave-pool.csv
 
 doc-pool:
 	cd aave-core && aptos move document \
@@ -574,47 +687,84 @@ fmt-pool:
 
 # ===================== AAVE-SCRIPTS ===================== #
 
+compile-scripts:
+	cd aave-core && aptos move compile \
+	--included-artifacts none \
+    --save-metadata \
+	--package-dir "aave-scripts" \
+	--skip-fetch-latest-git-deps \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+	--named-addresses "${AAVE_NAMED_ADDRESSES}"
+
 configure-acl:
 	aptos move run-script \
 	--assume-yes \
-	--compiled-script-path aave-scripts/build/AaveScripts/bytecode_scripts/configure_acl.mv \
-    --sender-account=aave_acl \
-    --profile=aave_acl
-
-create-reserves:
-	aptos move run-script \
-	--assume-yes \
-	--compiled-script-path aave-scripts/build/AaveScripts/bytecode_scripts/create_reserves.mv \
-    --sender-account=aave_pool \
-    --profile=aave_pool
+	--compiled-script-path aave-core/aave-scripts/build/AaveScripts/bytecode_scripts/main_0.mv \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+	--sender-account aave_acl \
+	--profile aave_acl \
+	--args \
+	  'address:["$(POOL_ADMINS)"]' \
+	  'address:["$(ASSET_LISTING_ADMINS)"]' \
+	  'address:["$(RISK_ADMINS)"]' \
+	  'address:["$(FUND_ADMINS)"]' \
+	  'address:["$(EMERGENCY_ADMINS)"]' \
+	  'address:["$(FLASH_BORROWER_ADMINS)"]' \
+	  'address:["$(EMISSION_ADMINS)"]' \
+	  'address:["$(ECOSYSTEM_ADMINS)"]' \
+	  'address:["$(REWARDS_ADMINS)"]'
 
 create-emodes:
 	aptos move run-script \
 	--assume-yes \
-	--compiled-script-path aave-scripts/build/AaveScripts/bytecode_scripts/create_emodes.mv \
-    --sender-account=aave_pool \
-    --profile=aave_pool
+	--compiled-script-path aave-core/aave-scripts/build/AaveScripts/bytecode_scripts/main_1.mv \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+    --sender-account aave_pool \
+    --profile aave_pool \
+    --args string:testnet
+
+create-reserves:
+	aptos move run-script \
+	--assume-yes \
+	--compiled-script-path aave-core/aave-scripts/build/AaveScripts/bytecode_scripts/main_2.mv \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+    --sender-account aave_pool \
+    --profile aave_pool \
+    --args string:testnet
 
 configure-reserves:
 	aptos move run-script \
 	--assume-yes \
-	--compiled-script-path aave-scripts/build/AaveScripts/bytecode_scripts/configure_reserves.mv \
-    --sender-account=aave_pool \
-    --profile=aave_pool
+	--compiled-script-path aave-core/aave-scripts/build/AaveScripts/bytecode_scripts/main_3.mv \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+    --sender-account aave_pool \
+    --profile aave_pool \
+    --args string:testnet
 
 configure-interest-rates:
 	aptos move run-script \
 	--assume-yes \
-	--compiled-script-path aave-scripts/build/AaveScripts/bytecode_scripts/configure_interest_rates.mv \
-    --sender-account=aave_pool \
-    --profile=aave_pool
+	--compiled-script-path aave-core/aave-scripts/build/AaveScripts/bytecode_scripts/main_4.mv \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+    --sender-account aave_pool \
+    --profile aave_pool \
+    --args string:testnet
 
 configure-price-feeds:
 	aptos move run-script \
 	--assume-yes \
-	--compiled-script-path aave-scripts/build/AaveScripts/bytecode_scripts/configure_price_feeds.mv \
-    --sender-account=aave_pool \
-    --profile=aave_pool
+	--compiled-script-path aave-core/aave-scripts/build/AaveScripts/bytecode_scripts/main_5.mv \
+	--language-version "$(MOVE_VERSION)" \
+	--compiler-version "$(COMPILER_VERSION)" \
+    --sender-account aave_pool \
+    --profile aave_pool \
+    --args string:testnet
 
 fmt-scripts:
 	aptos move fmt \
@@ -633,29 +783,42 @@ COMPILE_CHAINLINK_TARGETS :=
 PUBLISH_CHAINLINK_TARGETS :=
 endif
 
+ifeq ($(APTOS_NETWORK), local)
+COMPILE_MOCK_TARGETS := compile-mock-underlyings
+PUBLISH_MOCK_TARGETS := publish-mock-underlyings
+else
+COMPILE_MOCK_TARGETS :=
+PUBLISH_MOCK_TARGETS :=
+endif
+
 compile-all:
 	make compile-config
 	make compile-acl
 	make compile-large-packages
 	make compile-math
-	make compile-rate
 	@for target in $(COMPILE_CHAINLINK_TARGETS); do \
 	    make $$target; \
 	done
 	make compile-oracle
+	@for target in $(COMPILE_MOCK_TARGETS); do \
+	    make $$target; \
+	done
 	make compile-pool
 	make compile-data
+	make compile-scripts
 
 publish-all:
 	make publish-config
 	make publish-acl
 	make publish-large-packages
 	make publish-math
-	make publish-rate
 	@for target in $(PUBLISH_CHAINLINK_TARGETS); do \
 	    make $$target; \
 	done
 	make publish-oracle
+	@for target in $(PUBLISH_MOCK_TARGETS); do \
+	    make $$target; \
+	done
 	make publish-pool
 	make publish-data
 
@@ -664,8 +827,8 @@ doc-all:
 	make doc-acl
 	make doc-large-packages
 	make doc-math
-	make doc-rate
 	make doc-oracle
+	make doc-mock-underlyings
 	make doc-pool
 
 clean-all:
@@ -673,12 +836,24 @@ clean-all:
 	make clean-package-acl
 	make clean-package-large-packages
 	make clean-package-math
-	make clean-package-rate
 	make clean-chainlink-platform
 	make clean-chainlink-data-feeds
 	make clean-package-oracle
+	make clean-mock-underlyings
 	make clean-core
 	make clean-data
+	make clean-scripts
+
+# ------------------------------------------------------------
+# Coverage
+# ------------------------------------------------------------
+
+coverage-all:
+	make coverage-config
+	make coverage-acl
+	make coverage-math
+	make coverage-oracle
+	make coverage-pool
 
 # ------------------------------------------------------------
 # Formatting
@@ -692,10 +867,10 @@ fmt-move:
 	make fmt-config
 	make fmt-large-packages
 	make fmt-math
-	make fmt-rate
 	make fmt-oracle
 	make fmt-pool
 	make fmt-data
+	make fmt-mock-underlyings
 	make fmt-scripts
 
 fmt-prettier:

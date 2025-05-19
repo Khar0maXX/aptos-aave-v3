@@ -9,7 +9,6 @@ import {
   GetReserveConfigurationDataFuncAddr,
   GetReserveDataFuncAddr,
   GetSiloedBorrowingFuncAddr,
-  GetUnbackedMintCapFuncAddr,
   PoolConfiguratorConfigureReserveAsCollateralFuncAddr,
   PoolConfiguratorSetBorrowCapFuncAddr,
   PoolConfiguratorSetDebtCeilingFuncAddr,
@@ -21,11 +20,8 @@ import {
   PoolConfiguratorSetReservePauseFuncAddr,
   PoolConfiguratorSetSiloedBorrowingFuncAddr,
   PoolConfiguratorSetSupplyCapFuncAddr,
-  PoolConfiguratorSetUnbackedMintCapFuncAddr,
-  PoolConfiguratorUpdateBridgeProtocolFeeFuncAddr,
   PoolConfiguratorUpdateFlashloanPremiumToProtocolFuncAddr,
   PoolConfiguratorUpdateFlashloanPremiumTotalFuncAddr,
-  PoolGetBridgeProtocolFeeFuncAddr,
   PoolGetFlashloanPremiumToProtocolFuncAddr,
   PoolGetFlashloanPremiumTotalFuncAddr,
   PoolManager,
@@ -141,7 +137,7 @@ describe("PoolConfigurator", () => {
 
   it("Pauses the ETH reserve by pool admin", async () => {
     const { aave } = testEnv;
-    expect(await Transaction(aptos, PoolManager, PoolConfiguratorSetReservePauseFuncAddr, [aave, true]));
+    expect(await Transaction(aptos, PoolManager, PoolConfiguratorSetReservePauseFuncAddr, [aave, true, 0]));
     await expectReserveConfigurationData(aave, {
       ...baseConfigValues,
       isPaused: true,
@@ -150,7 +146,7 @@ describe("PoolConfigurator", () => {
 
   it("Unpauses the ETH reserve by pool admin", async () => {
     const { aave } = testEnv;
-    expect(await Transaction(aptos, PoolManager, PoolConfiguratorSetReservePauseFuncAddr, [aave, false]));
+    expect(await Transaction(aptos, PoolManager, PoolConfiguratorSetReservePauseFuncAddr, [aave, false, 0]));
     await expectReserveConfigurationData(aave, {
       ...baseConfigValues,
     });
@@ -158,7 +154,7 @@ describe("PoolConfigurator", () => {
 
   it("Pauses the ETH reserve by emergency admin", async () => {
     const { aave, emergencyAdmin } = testEnv;
-    expect(await Transaction(aptos, emergencyAdmin, PoolConfiguratorSetReservePauseFuncAddr, [aave, true]));
+    expect(await Transaction(aptos, emergencyAdmin, PoolConfiguratorSetReservePauseFuncAddr, [aave, true, 0]));
     await expectReserveConfigurationData(aave, {
       ...baseConfigValues,
       isPaused: true,
@@ -167,7 +163,7 @@ describe("PoolConfigurator", () => {
 
   it("Unpauses the ETH reserve by emergency admin", async () => {
     const { aave, emergencyAdmin } = testEnv;
-    expect(await Transaction(aptos, emergencyAdmin, PoolConfiguratorSetReservePauseFuncAddr, [aave, false]));
+    expect(await Transaction(aptos, emergencyAdmin, PoolConfiguratorSetReservePauseFuncAddr, [aave, false, 0]));
     await expectReserveConfigurationData(aave, {
       ...baseConfigValues,
     });
@@ -230,7 +226,7 @@ describe("PoolConfigurator", () => {
     expect(await Transaction(aptos, PoolManager, PoolConfiguratorSetReserveBorrowingFuncAddr, [aave, true]));
 
     const reserveData = await View(aptos, GetReserveDataFuncAddr, [aave]);
-    const variableBorrowIndex = reserveData[7];
+    const variableBorrowIndex = reserveData[6];
     await expectReserveConfigurationData(aave, {
       ...baseConfigValues,
     });
@@ -242,7 +238,7 @@ describe("PoolConfigurator", () => {
     expect(await Transaction(aptos, riskAdmin, PoolConfiguratorSetReserveBorrowingFuncAddr, [aave, true]));
 
     const reserveData = await View(aptos, GetReserveDataFuncAddr, [aave]);
-    const variableBorrowIndex = reserveData[7];
+    const variableBorrowIndex = reserveData[6];
     await expectReserveConfigurationData(aave, {
       ...baseConfigValues,
     });
@@ -341,24 +337,6 @@ describe("PoolConfigurator", () => {
     });
   });
 
-  it("Updates the unbackedMintCap of aave via pool admin", async () => {
-    const { aave } = testEnv;
-    const newUnbackedMintCap = "10000";
-    expect(
-      await Transaction(aptos, PoolManager, PoolConfiguratorSetUnbackedMintCapFuncAddr, [aave, newUnbackedMintCap]),
-    );
-    const [newaaveUnbackedMintCap] = await View(aptos, GetUnbackedMintCapFuncAddr, [aave]);
-    expect(newaaveUnbackedMintCap).toBe(newUnbackedMintCap);
-  });
-
-  it("Updates the unbackedMintCap of aave via risk admin", async () => {
-    const { aave, riskAdmin } = testEnv;
-    const newUnbackedMintCap = "20000";
-    expect(await Transaction(aptos, riskAdmin, PoolConfiguratorSetUnbackedMintCapFuncAddr, [aave, newUnbackedMintCap]));
-    const [newaaveUnbackedMintCap] = await View(aptos, GetUnbackedMintCapFuncAddr, [aave]);
-    expect(newaaveUnbackedMintCap).toBe(newUnbackedMintCap);
-  });
-
   it("Updates the borrowCap of aave via pool admin", async () => {
     const { aave } = testEnv;
     const newBorrowCap = "3000000";
@@ -401,20 +379,6 @@ describe("PoolConfigurator", () => {
       borrowCap: newBorrowCap,
       supplyCap: newSupplyCap,
     });
-  });
-
-  it("Updates bridge protocol fee equal to PERCENTAGE_FACTOR", async () => {
-    const newProtocolFee = "10000";
-    await Transaction(aptos, PoolManager, PoolConfiguratorUpdateBridgeProtocolFeeFuncAddr, [newProtocolFee]);
-    const [newBridgeProtocolFee] = await View(aptos, PoolGetBridgeProtocolFeeFuncAddr, []);
-    expect(newBridgeProtocolFee).toBe(newProtocolFee);
-  });
-
-  it("Updates bridge protocol fee", async () => {
-    const newProtocolFee = "2000";
-    await Transaction(aptos, PoolManager, PoolConfiguratorUpdateBridgeProtocolFeeFuncAddr, [newProtocolFee]);
-    const [newBridgeProtocolFee] = await View(aptos, PoolGetBridgeProtocolFeeFuncAddr, []);
-    expect(newBridgeProtocolFee).toBe(newProtocolFee);
   });
 
   it("Updates flash loan premiums equal to PERCENTAGE_FACTOR: 10000 toProtocol, 10000 total", async () => {
@@ -488,8 +452,7 @@ describe("PoolConfigurator", () => {
     try {
       await Transaction(aptos, PoolManager, PoolConfiguratorSetDebtCeilingFuncAddr, [aave, debtCeiling]);
     } catch (err) {
-      // console.log("err:", err.toString());
-      expect(err.toString().includes("reserve: 0x49")).toBe(true);
+      expect(err.toString().includes("reserve_config: 0x49")).toBe(true);
     }
     const [newCeiling] = await View(aptos, GetDebtCeilingFuncAddr, [aave]);
     expect(newCeiling).toBe(currentCeiling);

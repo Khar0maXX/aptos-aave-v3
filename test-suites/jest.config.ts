@@ -2,18 +2,27 @@ import type { Config } from "jest";
 
 const config: Config = {
   verbose: true,
+  silent: false,
   testEnvironment: "node",
-  preset: "ts-jest",
+  preset: "ts-jest/presets/default-esm",
   roots: ["<rootDir>"],
   testMatch: ["**/*.spec.ts"],
+  moduleDirectories: ["node_modules", "test"],
   transform: {
-    "^.+\\.ts$": "ts-jest",
+    "^.+\\.ts$": [
+      "ts-jest",
+      {
+        useESM: true,
+      },
+    ],
   },
   moduleNameMapper: {
     "@/(.*)": "<rootDir>/src/$1",
   },
   moduleFileExtensions: ["ts", "js", "json"],
   collectCoverage: true,
+  coverageDirectory: "coverage",
+  coverageReporters: ["lcov"],
   setupFiles: ["dotenv/config"],
   // coverageThreshold: {
   //   global: {
@@ -23,9 +32,9 @@ const config: Config = {
   //     statements: 50, // 95,
   //   },
   // },
-  testTimeout: 15000, // Add global timeout here
+  testTimeout: 30000, // Add global timeout here
   // To help avoid exhausting all the available fds.
-  maxWorkers: 4,
+  maxWorkers: 1,
 };
 
 export default config;

@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { BigNumber } from "@ethersproject/bignumber";
 import { initializeMakeSuite, testEnv } from "../configs/config";
 import { Transaction, View } from "../helpers/helper";
@@ -10,13 +9,20 @@ import {
   LiquidationCallFuncAddr,
   SupplyFuncAddr,
 } from "../configs/supplyBorrow";
-import { getDecimals, UnderlyingDecimalsFuncAddr, UnderlyingManager, UnderlyingMintFuncAddr } from "../configs/tokens";
-import { GetAssetPriceFuncAddr, OracleManager, SetAssetPriceFuncAddr } from "../configs/oracle";
+import { getDecimals, UnderlyingDecimalsFuncAddr, UnderlyingManager, UnderlyingMintFuncAddr, USDC } from "../configs/tokens";
+import { GetAssetPriceFuncAddr, OracleManager } from "../configs/oracle";
 import "../helpers/wadraymath";
+import { AptosProvider } from "../wrappers/aptosProvider";
+import { OracleClient } from "../clients/oracleClient";
+import { priceFeeds } from "../helpers/priceFeeds";
+
+const aptosProvider = AptosProvider.fromEnvs();
+let oracleClient: OracleClient;
 
 describe("Pool Liquidation: Liquidator receiving the underlying asset", () => {
   beforeAll(async () => {
     await initializeMakeSuite();
+    oracleClient = new OracleClient(aptosProvider, OracleManager);
   });
 
   it("It's not possible to liquidate on a non-active collateral or a non active principal", async () => {
@@ -97,28 +103,27 @@ describe("Pool Liquidation: Liquidator receiving the underlying asset", () => {
 
     // const amountUSDCToBorrow = BigNumber.from(available_borrows_base).div(BigNumber.from(usdcPrice)).toNumber() * 10 ** usdcDecimals;
     const amountUSDCToBorrow = 100 * 10 ** usdcDecimals;
-    console.log(
-      "availableBorrowsBase:",
-      availableBorrowsBase,
-      "usdcPrice:",
-      usdcPrice,
-      BigNumber.from(usdcPrice).percentMul(11200).toNumber(),
-      "amountUSDCToBorrow:",
-      amountUSDCToBorrow,
-    );
+    // console.log(
+    //   "availableBorrowsBase:",
+    //   availableBorrowsBase,
+    //   "usdcPrice:",
+    //   usdcPrice,
+    //   BigNumber.from(usdcPrice).percentMul(11200).toNumber(),
+    //   "amountUSDCToBorrow:",
+    //   amountUSDCToBorrow,
+    // );
 
     // borrower borrows
     await Transaction(aptos, borrower, BorrowFuncAddr, [
       usdc,
-      borrower.accountAddress.toString(),
       amountUSDCToBorrow,
-      1,
+      2,
       0,
-      true,
+      borrower.accountAddress.toString(),
     ]);
 
     // drops HF below 1
-    await Transaction(aptos, OracleManager, SetAssetPriceFuncAddr, [usdc, 11200]);
+    await oracleClient.setAssetCustomPrice(usdc, BigNumber.from(11200));
 
     // mints dai to the liquidator
     await Transaction(aptos, UnderlyingManager, UnderlyingMintFuncAddr, [
@@ -150,7 +155,6 @@ describe("Pool Liquidation: Liquidator receiving the underlying asset", () => {
         false,
       ]);
     } catch (err) {
-      // console.log("err:", err.toString())
       expect(err.toString().includes("validation_logic: 0x2d")).toBe(true);
     }
   });

@@ -4,8 +4,8 @@ import { configReserves } from "./configReserves";
 import { initReserves } from "./initReserves";
 import { createTokens } from "./createTokens";
 import { createRoles } from "./createRoles";
-import { initDefaultInteresRates } from "./initInterestRate";
-import { initPoolAddressesProvider } from "./initPoolAddressesProvider";
+import { initDefaultInterestRates } from "./initInterestRate";
+import { initEModes } from "./initEModes";
 import chalk from "chalk";
 
 (async () => {
@@ -21,31 +21,37 @@ import chalk from "chalk";
   await createTokens();
   console.log(chalk.green("created tokens successfully!"));
 
-  // step3. init interest rate strategies
+  // step4. init emodes
   console.log(chalk.yellow("---------------------------------------------"));
-  console.log(chalk.cyan("initializing default interest rate strategies..."));
-  await initDefaultInteresRates();
-  console.log(chalk.green("initialized interest rate strategies successfully!"));
+  console.log(chalk.cyan("initializing emodes..."));
+  await initEModes();
+  console.log(chalk.green("initialized emodes successfully!"));
 
-  // step3. init reserves and interest rate strategies
+  // step5. init reserves and interest rate strategies
   console.log(chalk.yellow("---------------------------------------------"));
   console.log(chalk.cyan("initializing reserves..."));
   await initReserves();
   console.log(chalk.green("initialized reserves successfully!"));
 
-  // step4. config reserves
+  // step6. config reserves
   console.log(chalk.yellow("---------------------------------------------"));
   console.log(chalk.cyan("configuring reserves..."));
   await configReserves();
   console.log(chalk.green("configured reserves successfully!"));
 
-  // step5. config oracle price
+  // step7. init interest rate strategies
+  console.log(chalk.yellow("---------------------------------------------"));
+  console.log(chalk.cyan("initializing default interest rate strategies..."));
+  await initDefaultInterestRates();
+  console.log(chalk.green("initialized interest rate strategies successfully!"));
+
+  // step8. config oracle price
   console.log(chalk.yellow("---------------------------------------------"));
   console.log(chalk.cyan("configuring oracle prices..."));
   await initReserveOraclePrice();
   console.log(chalk.green("configured oracle prices successfully!"));
 
-  // // step6. config pool addresses provider
+  // // step9. config pool addresses provider
   // console.log(chalk.yellow("---------------------------------------------"));
   // console.log(chalk.cyan("configuring pool addresses provider..."));
   // await initPoolAddressesProvider();

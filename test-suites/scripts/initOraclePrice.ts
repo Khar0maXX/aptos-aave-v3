@@ -7,10 +7,11 @@ import { underlyingTokens, aTokens, varTokens } from "./createTokens";
 import chalk from "chalk";
 import { AclClient } from "../clients/aclClient";
 import { AclManager } from "../configs/aclManage";
-import { CommittedTransactionResponse } from "@aptos-labs/ts-sdk";
+import { AccountAddress, CommittedTransactionResponse } from "@aptos-labs/ts-sdk";
 import { priceFeeds } from "../helpers/priceFeeds";
 import { UnderlyingManager } from "../configs/tokens";
 import { UnderlyingTokensClient } from "../clients/underlyingTokensClient";
+import { BigNumber } from "@ethersproject/bignumber";
 
 export async function initReserveOraclePrice() {
   // global aptos provider
@@ -27,14 +28,14 @@ export async function initReserveOraclePrice() {
   }
   console.log(`${OracleManager.accountAddress.toString()} set to be asset listing and pool admin`);
 
-  // set underlying price feeds
+  // set underlying prices and feed ids
   for (const [, underlyingToken] of underlyingTokens.entries()) {
     const priceFeed = priceFeeds.get(underlyingToken.symbol);
     const underlyingToBorrow = await underlyingTokensClient.getTokenAddress(underlyingToken.symbol);
-    const txReceipt = await oracleClient.setAssetFeedId(underlyingToBorrow, priceFeed);
+    let txReceipt = await oracleClient.setAssetCustomPrice(underlyingToBorrow, BigNumber.from("1"));
     console.log(
       chalk.yellow(
-        `Feed Id ${priceFeed} set by oracle for underlying asset ${underlyingToken.symbol} with address ${underlyingToBorrow.toString()}. Tx hash = ${txReceipt.hash}`,
+        `Feed Id ${priceFeed} set by oracle for underlying asset ${underlyingToken.symbol} with address ${underlyingToBorrow.toString()} and price of 1.0. Tx hash = ${txReceipt.hash}`,
       ),
     );
   }
@@ -42,7 +43,7 @@ export async function initReserveOraclePrice() {
   // set atoken price feeds
   for (const [, aToken] of aTokens.entries()) {
     const priceFeed = priceFeeds.get(aToken.underlyingSymbol);
-    const txReceipt = await oracleClient.setAssetFeedId(aToken.accountAddress, priceFeed);
+    const txReceipt = await oracleClient.setAssetCustomPrice(aToken.accountAddress, BigNumber.from("1"));
     console.log(
       chalk.yellow(
         `Feed Id ${priceFeed} set by oracle for atoken ${aToken.symbol} with address ${aToken.accountAddress.toString()}. Tx hash = ${txReceipt.hash}`,
@@ -53,11 +54,19 @@ export async function initReserveOraclePrice() {
   // set var token price feeds
   for (const [, varToken] of varTokens.entries()) {
     const priceFeed = priceFeeds.get(varToken.underlyingSymbol);
-    const txReceipt = await oracleClient.setAssetFeedId(varToken.accountAddress, priceFeed);
+    const txReceipt = await oracleClient.setAssetCustomPrice(varToken.accountAddress, BigNumber.from("1"));
     console.log(
       chalk.yellow(
         `Feed Id ${priceFeed} set by oracle for vartoken ${varToken.symbol} with address ${varToken.accountAddress.toString()}. Tx hash = ${txReceipt.hash}`,
       ),
     );
   }
+
+  // set the mapped aptos token price feed
+  const priceFeed = priceFeeds.get("APT");
+  const mappedAptCoin = AccountAddress.fromString("0xa");
+  txReceipt = await oracleClient.setAssetCustomPrice(mappedAptCoin, BigNumber.from("1"));
+  chalk.yellow(
+    `Feed Id ${priceFeed} set by oracle for mapped coin APT with address ${mappedAptCoin.toString()}. Tx hash = ${txReceipt.hash}`,
+  );
 }

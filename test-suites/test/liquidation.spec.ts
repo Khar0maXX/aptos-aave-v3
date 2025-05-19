@@ -55,11 +55,10 @@ describe("Liquidation Test", () => {
     // borrow dai
     await Transaction(aptos, borrower, BorrowFuncAddr, [
       dai,
-      borrower.accountAddress.toString(),
       daiBorrowAmount,
-      1,
+      2,
       0,
-      true,
+      borrower.accountAddress.toString(),
     ]);
 
     // Try to liquidate the borrower

@@ -1,8 +1,9 @@
-/// @title GenericLogic module
+/// @title Generic Logic module
 /// @author Aave
 /// @notice Implements protocol-level logic to calculate and validate the state of a user
 module aave_pool::generic_logic {
-
+    // imports
+    use aptos_framework::object::Object;
     use aave_config::reserve_config;
     use aave_config::user_config::{Self, UserConfigurationMap};
     use aave_math::math_utils;
@@ -13,6 +14,9 @@ module aave_pool::generic_logic {
     use aave_pool::pool::{Self, ReserveData};
     use aave_pool::variable_debt_token_factory;
 
+    // Structs
+    /// @notice Structure to hold variables during user account data calculation
+    /// @dev Used to avoid stack too deep errors and to organize the calculation process
     struct CalculateUserAccountDataVars has drop {
         asset_price: u256,
         asset_unit: u256,
@@ -26,7 +30,6 @@ module aave_pool::generic_logic {
         total_debt_in_base_currency: u256,
         avg_ltv: u256,
         avg_liquidation_threshold: u256,
-        emode_asset_price: u256,
         emode_ltv: u256,
         emode_liq_threshold: u256,
         emode_asset_category: u256,
@@ -35,6 +38,10 @@ module aave_pool::generic_logic {
         is_in_emode_category: bool
     }
 
+    // Private functions
+    /// @notice Creates and initializes a new CalculateUserAccountDataVars struct
+    /// @dev Sets all numeric values to 0 and boolean values to false
+    /// @return A new initialized CalculateUserAccountDataVars struct
     fun create_calculate_user_account_data_vars(): CalculateUserAccountDataVars {
         CalculateUserAccountDataVars {
             asset_price: 0,
@@ -49,7 +56,6 @@ module aave_pool::generic_logic {
             total_debt_in_base_currency: 0,
             avg_ltv: 0,
             avg_liquidation_threshold: 0,
-            emode_asset_price: 0,
             emode_ltv: 0,
             emode_liq_threshold: 0,
             emode_asset_category: 0,
@@ -59,30 +65,81 @@ module aave_pool::generic_logic {
         }
     }
 
+    /// @notice Calculates total debt of the user in the based currency used to normalize the values of the assets
+    /// @dev The variable debt balance is calculated by fetching `scaled_balance_of` normalized debt
+    /// @param user The address of the user
+    /// @param reserve_data The data of the reserve for which the total debt of the user is being calculated
+    /// @param asset_price The price of the asset for which the total debt of the user is being calculated
+    /// @param asset_unit The value representing one full unit of the asset (10^decimals)
+    /// @return The total debt of the user normalized to the base currency
+    fun get_user_debt_in_base_currency(
+        user: address,
+        reserve_data: Object<ReserveData>,
+        asset_price: u256,
+        asset_unit: u256
+    ): u256 {
+        let user_total_debt =
+            variable_debt_token_factory::scaled_balance_of(
+                user, pool::get_reserve_variable_debt_token_address(reserve_data)
+            );
+
+        if (user_total_debt != 0) {
+            let normalized_debt = pool::get_normalized_debt_by_reserve_data(reserve_data);
+            user_total_debt = wad_ray_math::ray_mul(user_total_debt, normalized_debt);
+        };
+
+        user_total_debt = asset_price * user_total_debt;
+
+        user_total_debt / asset_unit
+    }
+
+    /// @notice Calculates total aToken balance of the user in the based currency used by the price oracle
+    /// @dev The aToken balance is calculated by fetching `scaled_balance_of` normalized debt
+    /// @param user The address of the user
+    /// @param reserve_data The data of the reserve for which the total aToken balance of the user is being calculated
+    /// @param asset_price The price of the asset for which the total aToken balance of the user is being calculated
+    /// @param asset_unit The value representing one full unit of the asset (10^decimals)
+    /// @return The total aToken balance of the user normalized to the base currency of the price oracle
+    fun get_user_balance_in_base_currency(
+        user: address,
+        reserve_data: Object<ReserveData>,
+        asset_price: u256,
+        asset_unit: u256
+    ): u256 {
+        let normalized_income = pool::get_normalized_income_by_reserve_data(reserve_data);
+        let balance =
+            wad_ray_math::ray_mul(
+                a_token_factory::scaled_balance_of(
+                    user, pool::get_reserve_a_token_address(reserve_data)
+                ),
+                normalized_income
+            ) * asset_price;
+        balance / asset_unit
+    }
+
+    // Public functions
     /// @notice Calculates the user data across the reserves.
     /// @dev It includes the total liquidity/collateral/borrow balances in the base currency used by the price feed,
     /// the average Loan To Value, the average Liquidation Ratio, and the Health factor.
-    /// @param params user_config_map The user configuration map
-    /// @param params reserves_count The number of reserves
-    /// @param params user The address of the user
-    /// @param params user_emode_category The category of the user in the emode
-    /// @param params emode_ltv The ltv of the user in the emode
-    /// @param params emode_liq_threshold The liquidation threshold of the user in the emode
-    /// @param params emode_asset_price The price of the asset in the emode
+    /// @param user_config_map The user configuration map
+    /// @param reserves_count The number of reserves
+    /// @param user The address of the user
+    /// @param user_emode_category The category of the user in the emode
+    /// @param emode_ltv The ltv of the user in the emode
+    /// @param emode_liq_threshold The liquidation threshold of the user in the emode
     /// @return The total collateral of the user in the base currency used by the price feed
     /// @return The total debt of the user in the base currency used by the price feed
     /// @return The average ltv of the user
     /// @return The average liquidation threshold of the user
     /// @return The health factor of the user
-    /// @return True if the ltv is zero, false otherwise
+    /// @return True if the user has a zero-LTV asset enabled as collateral
     public fun calculate_user_account_data(
         user_config_map: &UserConfigurationMap,
         reserves_count: u256,
         user: address,
         user_emode_category: u8,
         emode_ltv: u256,
-        emode_liq_threshold: u256,
-        emode_asset_price: u256
+        emode_liq_threshold: u256
     ): (u256, u256, u256, u256, u256, bool) {
         if (user_config::is_empty(user_config_map)) {
             return (0, 0, 0, 0, math_utils::u256_max(), false)
@@ -92,7 +149,6 @@ module aave_pool::generic_logic {
         if (user_emode_category != 0) {
             vars.emode_ltv = emode_ltv;
             vars.emode_liq_threshold = emode_liq_threshold;
-            vars.emode_asset_price = emode_asset_price;
         };
 
         while (vars.i < reserves_count) {
@@ -104,6 +160,7 @@ module aave_pool::generic_logic {
             };
 
             vars.current_reserve_address = pool::get_reserve_address_by_id(vars.i);
+            // `get_reserve_address_by_id` returns @0x0 if the id does not exist
             if (vars.current_reserve_address == @0x0) {
                 vars.i = vars.i + 1;
                 continue
@@ -111,7 +168,7 @@ module aave_pool::generic_logic {
 
             let current_reserve = pool::get_reserve_data(vars.current_reserve_address);
             let current_reserve_config_map =
-                pool::get_reserve_configuration_by_reserve_data(&current_reserve);
+                pool::get_reserve_configuration_by_reserve_data(current_reserve);
             let (ltv, liquidation_threshold, _, decimals, _, emode_asset_category) =
                 reserve_config::get_params(&current_reserve_config_map);
             vars.ltv = ltv;
@@ -121,34 +178,34 @@ module aave_pool::generic_logic {
 
             vars.asset_unit = math_utils::pow(10, vars.decimals);
 
-            vars.asset_price = if (vars.emode_asset_price != 0
-                && user_emode_category == (vars.emode_asset_category as u8)) {
-                vars.emode_asset_price
-            } else {
-                oracle::get_asset_price(vars.current_reserve_address)
-            };
+            vars.asset_price = oracle::get_asset_price(vars.current_reserve_address);
 
             if (vars.liquidation_threshold != 0
                 && user_config::is_using_as_collateral(user_config_map, vars.i)) {
                 vars.user_balance_in_base_currency = get_user_balance_in_base_currency(
                     user,
-                    &current_reserve,
+                    current_reserve,
                     vars.asset_price,
                     vars.asset_unit
                 );
 
-                vars.total_collateral_in_base_currency = vars.total_collateral_in_base_currency
-                    + vars.user_balance_in_base_currency;
+                vars.total_collateral_in_base_currency =
+                    vars.total_collateral_in_base_currency
+                        + vars.user_balance_in_base_currency;
 
-                vars.is_in_emode_category = user_emode_category != 0
-                    && vars.emode_asset_category == (user_emode_category as u256);
+                vars.is_in_emode_category =
+                    user_emode_category != 0
+                        && vars.emode_asset_category == (user_emode_category as u256);
 
+                // NOTE: if the reserve's LTV is zero but its eMode category's LTV is non-zero,
+                // the reserve's LTV supersedes eMode LTV, this is an intended behavior.
                 if (vars.ltv != 0) {
-                    let ltv = if (vars.is_in_emode_category) {
-                        vars.emode_ltv
-                    } else {
-                        vars.ltv
-                    };
+                    let ltv =
+                        if (vars.is_in_emode_category) {
+                            vars.emode_ltv
+                        } else {
+                            vars.ltv
+                        };
                     vars.avg_ltv = vars.avg_ltv
                         + vars.user_balance_in_base_currency * ltv;
                 } else {
@@ -161,45 +218,48 @@ module aave_pool::generic_logic {
                     } else {
                         vars.liquidation_threshold
                     };
-                vars.avg_liquidation_threshold = vars.avg_liquidation_threshold
-                    + vars.user_balance_in_base_currency * liquidation_threshold;
+                vars.avg_liquidation_threshold =
+                    vars.avg_liquidation_threshold
+                        + vars.user_balance_in_base_currency * liquidation_threshold;
             };
 
             if (user_config::is_borrowing(user_config_map, vars.i)) {
                 let user_debt_in_base_currency =
                     get_user_debt_in_base_currency(
                         user,
-                        &current_reserve,
+                        current_reserve,
                         vars.asset_price,
                         vars.asset_unit
                     );
-                vars.total_debt_in_base_currency = vars.total_debt_in_base_currency
-                    + user_debt_in_base_currency;
+                vars.total_debt_in_base_currency =
+                    vars.total_debt_in_base_currency + user_debt_in_base_currency;
             };
 
             vars.i = vars.i + 1;
         };
 
-        vars.avg_ltv = if (vars.total_collateral_in_base_currency != 0) {
-            vars.avg_ltv / vars.total_collateral_in_base_currency
-        } else { 0 };
+        vars.avg_ltv =
+            if (vars.total_collateral_in_base_currency != 0) {
+                vars.avg_ltv / vars.total_collateral_in_base_currency
+            } else { 0 };
 
-        vars.avg_liquidation_threshold = if (vars.total_collateral_in_base_currency
-            != 0) {
-            vars.avg_liquidation_threshold / vars.total_collateral_in_base_currency
-        } else { 0 };
+        vars.avg_liquidation_threshold =
+            if (vars.total_collateral_in_base_currency != 0) {
+                vars.avg_liquidation_threshold / vars.total_collateral_in_base_currency
+            } else { 0 };
 
-        vars.health_factor = if (vars.total_debt_in_base_currency == 0) {
-            math_utils::u256_max()
-        } else {
-            wad_ray_math::wad_div(
-                math_utils::percent_mul(
-                    vars.total_collateral_in_base_currency,
-                    vars.avg_liquidation_threshold
-                ),
-                vars.total_debt_in_base_currency
-            )
-        };
+        vars.health_factor =
+            if (vars.total_debt_in_base_currency == 0) {
+                math_utils::u256_max()
+            } else {
+                wad_ray_math::wad_div(
+                    math_utils::percent_mul(
+                        vars.total_collateral_in_base_currency,
+                        vars.avg_liquidation_threshold
+                    ),
+                    vars.total_debt_in_base_currency
+                )
+            };
 
         return (
             vars.total_collateral_in_base_currency,
@@ -225,62 +285,10 @@ module aave_pool::generic_logic {
         let available_borrows_in_base_currency =
             math_utils::percent_mul(total_collateral_in_base_currency, ltv);
 
-        if (available_borrows_in_base_currency < total_debt_in_base_currency) {
+        if (available_borrows_in_base_currency <= total_debt_in_base_currency) {
             return 0
         };
 
         available_borrows_in_base_currency - total_debt_in_base_currency
-    }
-
-    /// @notice Calculates total debt of the user in the based currency used to normalize the values of the assets
-    /// the variable debt balance is calculated by fetching `scaled_balance_of` normalized debt
-    /// @param user The address of the user
-    /// @param reserve_data The data of the reserve for which the total debt of the user is being calculated
-    /// @param asset_price The price of the asset for which the total debt of the user is being calculated
-    /// @param asset_unit The value representing one full unit of the asset (10^decimals)
-    /// @return The total debt of the user normalized to the base currency
-    fun get_user_debt_in_base_currency(
-        user: address,
-        reserve_data: &ReserveData,
-        asset_price: u256,
-        asset_unit: u256
-    ): u256 {
-        let user_total_debt =
-            variable_debt_token_factory::scaled_balance_of(
-                user, pool::get_reserve_variable_debt_token_address(reserve_data)
-            );
-
-        if (user_total_debt != 0) {
-            let normalized_debt = pool::get_normalized_debt_by_reserve_data(reserve_data);
-            user_total_debt = wad_ray_math::ray_mul(user_total_debt, normalized_debt);
-        };
-
-        user_total_debt = asset_price * user_total_debt;
-
-        user_total_debt / asset_unit
-    }
-
-    /// @notice Calculates total aToken balance of the user in the based currency used by the price oracle
-    /// @dev the aToken balance is calculated by fetching `scaled_balance_of` normalized debt
-    /// @param user The address of the user
-    /// @param reserve_data The data of the reserve for which the total aToken balance of the user is being calculated
-    /// @param asset_price The price of the asset for which the total aToken balance of the user is being calculated
-    /// @param asset_unit The value representing one full unit of the asset (10^decimals)
-    /// @return The total aToken balance of the user normalized to the base currency of the price oracle
-    fun get_user_balance_in_base_currency(
-        user: address,
-        reserve_data: &ReserveData,
-        asset_price: u256,
-        asset_unit: u256
-    ): u256 {
-        let normalized_income = pool::get_normalized_income_by_reserve_data(reserve_data);
-        let balance =
-            wad_ray_math::ray_mul(
-                a_token_factory::scaled_balance_of(
-                    user, pool::get_reserve_a_token_address(reserve_data)
-                ),
-                normalized_income
-            ) * asset_price;
-        balance / asset_unit
     }
 }

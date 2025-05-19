@@ -49,8 +49,9 @@ export class ATokensClient extends AptosContractWrapperBaseClass {
     token: AccountAddress,
     to: AccountAddress,
     amount: BigNumber,
+    metadataAddress: AccountAddress
   ): Promise<CommittedTransactionResponse> {
-    return this.sendTxAndAwaitResponse(ATokenRescueTokensFuncAddr, [token, to, amount.toString()]);
+    return this.sendTxAndAwaitResponse(ATokenRescueTokensFuncAddr, [token, to, amount.toString(), metadataAddress]);
   }
 
   public async getRevision(): Promise<number> {
@@ -58,8 +59,8 @@ export class ATokensClient extends AptosContractWrapperBaseClass {
     return resp as number;
   }
 
-  public async getMetadataBySymbol(owner: AccountAddress, symbol: string): Promise<AccountAddress> {
-    const [resp] = await this.callViewMethod(ATokenGetMetadataBySymbolFuncAddr, [owner, symbol]);
+  public async getMetadataBySymbol(symbol: string): Promise<AccountAddress> {
+    const [resp] = await this.callViewMethod(ATokenGetMetadataBySymbolFuncAddr, [symbol]);
     return AccountAddress.fromString((resp as Metadata).inner);
   }
 
@@ -68,13 +69,13 @@ export class ATokensClient extends AptosContractWrapperBaseClass {
     return AccountAddress.fromString(resp as string);
   }
 
-  public async getTokenAddress(owner: AccountAddress, symbol: string): Promise<AccountAddress> {
-    const [resp] = await this.callViewMethod(ATokenTokenAddressFuncAddr, [owner, symbol]);
+  public async getTokenAddress(symbol: string): Promise<AccountAddress> {
+    const [resp] = await this.callViewMethod(ATokenTokenAddressFuncAddr, [symbol]);
     return AccountAddress.fromString(resp as string);
   }
 
-  public async assetMetadata(owner: AccountAddress, symbol: string): Promise<AccountAddress> {
-    const [resp] = await this.callViewMethod(ATokenAssetMetadataFuncAddr, [owner, symbol]);
+  public async assetMetadata(symbol: string): Promise<AccountAddress> {
+    const [resp] = await this.callViewMethod(ATokenAssetMetadataFuncAddr, [symbol]);
     return AccountAddress.fromString((resp as Metadata).inner);
   }
 

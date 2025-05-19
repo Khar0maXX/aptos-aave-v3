@@ -4,10 +4,11 @@ import { AptosProvider } from "../wrappers/aptosProvider";
 // Resources Admin Account
 // AAVE RATE
 const aptosProvider = AptosProvider.fromEnvs();
-export const RateManager = Account.fromPrivateKey({
-  privateKey: aptosProvider.getProfileAccountPrivateKeyByName("aave_rate"),
+export const PoolManager = Account.fromPrivateKey({
+  privateKey: aptosProvider.getProfileAccountPrivateKeyByName("aave_pool"),
 });
-export const RateManagerAccountAddress = RateManager.accountAddress.toString();
+
+export const PoolManagerAccountAddress = PoolManager.accountAddress.toString();
 
 /**
  * -------------------------------------------------------------------------
@@ -15,16 +16,13 @@ export const RateManagerAccountAddress = RateManager.accountAddress.toString();
  * -------------------------------------------------------------------------
  */
 // Entry
-export const SetReserveInterestRateStrategyFuncAddr: MoveFunctionId = `${RateManagerAccountAddress}::default_reserve_interest_rate_strategy::set_reserve_interest_rate_strategy`;
-
 // View
-export const GetGetOptimalUsageRatioFuncAddr: MoveFunctionId = `${RateManagerAccountAddress}::default_reserve_interest_rate_strategy::get_optimal_usage_ratio`;
-export const GetGetMaxExcessUsageRatioFuncAddr: MoveFunctionId = `${RateManagerAccountAddress}::default_reserve_interest_rate_strategy::get_max_excess_usage_ratio`;
-export const GetVariableRateSlope1FuncAddr: MoveFunctionId = `${RateManagerAccountAddress}::default_reserve_interest_rate_strategy::get_variable_rate_slope1`;
-export const GetVariableRateSlope2FuncAddr: MoveFunctionId = `${RateManagerAccountAddress}::default_reserve_interest_rate_strategy::get_variable_rate_slope2`;
-export const GetBaseVariableBorrowRateFuncAddr: MoveFunctionId = `${RateManagerAccountAddress}::default_reserve_interest_rate_strategy::get_base_variable_borrow_rate`;
-export const GetMaxVariableBorrowRateFuncAddr: MoveFunctionId = `${RateManagerAccountAddress}::default_reserve_interest_rate_strategy::get_max_variable_borrow_rate`;
-export const CalculateInterestRatesFuncAddr: MoveFunctionId = `${RateManagerAccountAddress}::default_reserve_interest_rate_strategy::calculate_interest_rates`;
+export const GetGetOptimalUsageRatioFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::default_reserve_interest_rate_strategy::get_optimal_usage_ratio`;
+export const GetVariableRateSlope1FuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::default_reserve_interest_rate_strategy::get_variable_rate_slope1`;
+export const GetVariableRateSlope2FuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::default_reserve_interest_rate_strategy::get_variable_rate_slope2`;
+export const GetBaseVariableBorrowRateFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::default_reserve_interest_rate_strategy::get_base_variable_borrow_rate`;
+export const GetMaxVariableBorrowRateFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::default_reserve_interest_rate_strategy::get_max_variable_borrow_rate`;
+export const CalculateInterestRatesFuncAddr: MoveFunctionId = `${PoolManagerAccountAddress}::default_reserve_interest_rate_strategy::calculate_interest_rates`;
 
 /**
  * -------------------------------------------------------------------------
@@ -189,6 +187,7 @@ export const rateStrategyStableTwo = {
   stableRateExcessOffset: "50000000000000000000000000",
   optimalStableToTotalDebtRatio: "200000000000000000000000000",
 };
+//  base_variable_borrow_rate + variable_rate_slope1 + variable_rate_slope2
 
 export type ReserveData = {
   /// stores the reserve configuration
@@ -217,8 +216,6 @@ export type ReserveData = {
   interest_rate_strategy_address: string;
   /// the current treasury balance, scaled
   accrued_to_treasury: Number;
-  /// the outstanding unbacked aTokens minted through the bridging feature
-  unbacked: Number;
   /// the outstanding debt borrowed against this asset in isolation mode
   isolation_mode_total_debt: Number;
 };

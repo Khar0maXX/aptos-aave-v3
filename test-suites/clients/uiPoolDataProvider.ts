@@ -43,7 +43,6 @@ export type AggregatedReserveData = {
   isPaused: boolean;
   isSiloedBorrowing: boolean;
   accruedToTreasury: bigint;
-  unbacked: bigint;
   isolationModeTotalDebt: bigint;
   flashLoanEnabled: boolean;
   //
@@ -112,7 +111,7 @@ export class UiPoolDataProviderClient extends AptosContractWrapperBaseClass {
       name: item.name as string,
       symbol: item.symbol as string,
       decimals: Number(item.decimals.toString()),
-      baseLTVasCollateral: BigInt(item.base_lt_vas_collateral),
+      baseLTVasCollateral: BigInt(item.base_ltv_as_collateral),
       reserveLiquidationThreshold: BigInt(item.reserve_liquidation_threshold),
       reserveLiquidationBonus: BigInt(item.reserve_liquidation_bonus),
       reserveFactor: BigInt(item.reserve_factor),
@@ -141,7 +140,6 @@ export class UiPoolDataProviderClient extends AptosContractWrapperBaseClass {
       isPaused: item.is_paused as boolean,
       isSiloedBorrowing: item.is_siloed_borrowing as boolean,
       accruedToTreasury: BigInt(item.accrued_to_treasury),
-      unbacked: BigInt(item.unbacked),
       isolationModeTotalDebt: BigInt(item.isolation_mode_total_debt),
       flashLoanEnabled: item.flash_loan_enabled as boolean,
       //

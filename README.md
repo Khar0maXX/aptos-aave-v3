@@ -1,189 +1,207 @@
-# Aave's V3 Protocol on Aptos
+<div align="center">
+    <a href="https://aptos.aave.com/">
+      <img src="./assets/logo.png" alt="Logo" style="transform: scale(0.7);">
+    </a>
+    <h1 align="center">Aave's V3 Protocol on Aptos</h1>
+    <p align="center">
+        This is the official Aptos version of the Aave V3 Protocol.
+    </p>
+    <p align="center">
+        <a href="https://github.com/aave/aptos-aave-v3/actions/workflows/unit_tests.yml" style="text-decoration: none; ">
+            <img src="https://github.com/aave/aptos-aave-v3/actions/workflows/unit_tests.yml/badge.svg?branch=feat/evgeni/cl-coverage" alt="CI">
+        </a>
+        <a href="https://codecov.io/gh/aave/aptos-aave-v3" style="text-decoration: none;">
+          <img src="https://codecov.io/gh/aave/aptos-aave-v3/branch/feat%2Fevgeni%2Fcl-coverage/graph/badge.svg?token=GzsXGvIv0r" alt="Coverage"/>
+        </a>
+        <a href="https://github.com/aave/aptos-aave-v3/blob/feat/evgeni/cl-coverage/LICENSE" style="text-decoration: none;">
+          <img src="https://img.shields.io/badge/license-MIT-007EC7.svg" alt="License"/>
+        </a>
+    </p>
+    <p align="center">
+        <a href="https://aave.com/docs">📚 Documentation</a>
+        <span>&nbsp;</span>
+        <a href="https://github.com/aave/aptos-aave-v3/issues/new?labels=bug&template=bug-report---.md">🐛 Report Bug</a>
+        <span>&nbsp;</span>
+        <a href="https://github.com/aave/aptos-aave-v3/issues/new?labels=enhancement&template=feature-request---.md">✨ Request Feature</a>
+    </p>
+</div>
 
-This is the official Aptos version of the Aave V3 Protocol.
-
-## Aptos Packages Overview
+---
 
 ```bash=
-├── aave-acl           // Access control list Package
-├── aave-bridge        // Bridge Package
-├── aave-config        // Configurator Package
-├── aave-flash-loan    // Flash loan Package
-├── aave-math          // Math library Package
-├── aave-oracle        // Chainlink Oracle Package
-├── aave-pool          // Pool Package
-├── aave-supply-borrow // Supply-Borrow Package
-├── aave-tokens        // Tokens Package
-├── aave-periphery     // Periphery Package
+├── aave-acl                // Access control list Package
+├── aave-config             // Configurator Package
+├── aave-data               // Data Configurations
+├── aave-large-packages     // Large Packages Package
+├── aave-math               // Math library Package
+├── aave-mock-underlyings   // Mock Underlyings Package
+├── aave-oracle             // Oracle Package
+├── aave-scripts            // Deployment Scripts
+├── aave-core               // Core Package
 ```
 
-Dependencies for all packages:
+---
 
-<!--
-    subgraph Level 1
-      AaveAcl
-      AaveConfig
-      AaveMath
-    end
-
-    subgraph Level 2
-      AaveOracle
-      AaveMockOracle
-      AaveTokens
-    end
-
-    subgraph Level 3
-      AavePeriphery
-      AavePool
-    end
-
-    subgraph Level 4
-      AaveSupplyBorrow
-    end
-
-    subgraph Level 5
-      AaveBridge
-      AaveFlashLoan
-      AaveScripts
-    end
--->
+## 📊 Inter-package Dependency Graph
 
 ```mermaid
-  flowchart TD
+flowchart TD
 
-    AaveOracle --> AaveAcl
-    AaveOracle --> AaveConfig
+  %% Level 1
+  aave-config
+  chainlink-data-feeds
+  aave-large-packages
 
-    AaveMockOracle --> AaveAcl
-    AaveMockOracle --> AaveConfig
+  %% Level 2
+  aave-acl --> aave-config
+  aave-math --> aave-config
 
-    AaveTokens --> AaveAcl
-    AaveTokens --> AaveConfig
-    AaveTokens --> AaveMath
+  %% Level 3
+  aave-oracle --> aave-config
+  aave-oracle --> aave-acl
+  aave-oracle --> chainlink-data-feeds
 
-    AavePeriphery --> AaveMockOracle
-    AavePeriphery --> AaveTokens
+  %% Level 4
+  aave-pool --> aave-acl
+  aave-pool --> aave-config
+  aave-pool --> aave-math
+  aave-pool --> aave-oracle
 
-    AavePool ---> AaveAcl
-    AavePool ---> AaveConfig
-    AavePool ---> AaveMath
-    AavePool --> AaveMockOracle
-    AavePool --> AaveTokens
+  %% Level 5
+  aave-data --> aave-config
+  aave-data --> aave-pool
 
-    AaveSupplyBorrow ----> AaveConfig
-    AaveSupplyBorrow ----> AaveMath
-    AaveSupplyBorrow ---> AaveMockOracle
-    AaveSupplyBorrow --> AavePool
-    AaveSupplyBorrow ---> AaveTokens
-
-    AaveBridge -----> AaveAcl
-    AaveBridge -----> AaveConfig
-    AaveBridge -----> AaveMath
-    AaveBridge ---> AavePool
-    AaveBridge --> AaveSupplyBorrow
-    AaveBridge ----> AaveTokens
-
-    AaveFlashLoan -----> AaveAcl
-    AaveFlashLoan -----> AaveConfig
-    AaveFlashLoan -----> AaveMath
-    AaveFlashLoan ---> AavePool
-    AaveFlashLoan ---> AaveSupplyBorrow
-    AaveFlashLoan ----> AaveTokens
+  %% Level 6
+  aave-scripts --> aave-acl
+  aave-scripts --> aave-config
+  aave-scripts --> aave-oracle
+  aave-scripts --> aave-data
+  aave-scripts --> aave-pool
 ```
 
-## 1. Clone the code
+---
 
-```bash=
-git clone (aave-aptos-v3)(https://github.com/aave/aptos-v3) && cd into it
+## 🚀 Getting Started
+
+### 1. 🧩 Clone the Repository
+
+```bash
+git clone https://github.com/aave/aptos-aave-v3.git && cd aptos-aave-v3
 ```
 
-Make sure you have the following installed and configured:
+---
 
-- Aptos-Cli [see here](https://aptos.dev/tools/aptos-cli/)
-- Yq tool: [see here](https://github.com/mikefarah/yq)
-- NodeJS/pnpm/npm/yarn [see here](https://pnpm.io/installation)
-- Codespell [see here](https://pypi.org/project/codespell/)
-- Pre-commit [see here](https://pre-commit.com/#install)
-- Python3 [see here](https://www.python.org/)
+### 2. 🛠️ Prerequisites
 
-## 2. Local Testnet using Makefile
+Make sure the following tools are installed:
 
-Local testnet commands are all bundled inside a `Makefile` at the root.
+- [Aptos CLI](https://aptos.dev/tools/aptos-cli/)
+- [yq](https://github.com/mikefarah/yq)
+- [Node.js + pnpm](https://pnpm.io/installation)
+- [codespell](https://pypi.org/project/codespell/)
+- [pre-commit](https://pre-commit.com/#install)
+- [Python 3](https://www.python.org/downloads/)
+- [GNU Make](https://www.gnu.org/software/make/)
 
-There is a `.env.template` template at the root that we recommend renaming to `.env` and adjusting the values of before executing the remaining steps.
+---
 
-Prior to all, run:
+## 🧪 Running a Local Testnet
 
-```shell
+### 🧰 Option 1: Using Makefile
+
+Start by copying `.env.template` to `.env` and editing any relevant values.
+
+#### ✅ Start the testnet
+
+```bash
 make local-testnet
 ```
 
-to start the local testnet without indexer. It usually takes about 10 seconds for the local testnet to be fully operational.
+#### ✅ With indexer (e.g. for Petra Wallet support)
 
-Once local testnet is running, in another terminal do:
-
-```shell
-make init-profiles && make init-test-profiles && make fund-profiles && make fund-test-profiles
+```bash
+make local-testnet-with-indexer
 ```
 
-This will create all needed accounts for publishing Aave V3 and save them under a file under `.aptos/config.yaml` at the workspace root.
-The accounts will be prefunded with APT too.
+#### 🔧 Configure workspace
 
-All aave packages can be now compiled using the command:
+```bash
+make set-workspace-config \
+  && make init-workspace-config \
+  && make init-profiles \
+  && make init-test-profiles \
+  && make fund-profiles \
+  && make fund-test-profiles
+```
 
-```shell
+This will initialize, configure, and fund local accounts with APT.
+
+#### 🛠️ Compile & Deploy
+
+```bash
 make compile-all
-```
-
-and subsequently deployed to local testnet via:
-
-```shell
 make publish-all
 ```
 
-If needed one could also run all aptos unit tests via:
+#### 🌐 View your local testnet
 
-```shell
+[https://explorer.aptoslabs.com/?network=local](https://explorer.aptoslabs.com/?network=local)
+
+---
+
+### 🐳 Option 2: Using `aave-test-kit` (Docker)
+
+[`aave-test-kit`](aave-test-kit/README.md) is a local simulation environment for Aave on Aptos, inspired by Tenderly.
+
+➡️ See the linked README for Docker-based setup and usage.
+
+---
+
+## 🧪 Testing
+
+### ✅ Run Unit Tests (Move)
+
+These do **not require a local testnet**.
+
+```bash
 make test-all
 ```
 
-To view transactions or query any data deployed on the local testnet you
-can use the following url:
+---
 
-<https://explorer.aptoslabs.com/?network=local>
+### 🔬 Run TypeScript Integration Tests
 
-## 3. Local Testnet using Apterly
+These must be run **after successful contract deployment**:
 
-Apterly is a tool that mimics some of the functionalities that Tenderly offers. You can read more about it under [Apterly](apterly/README.md). Follow the Readme if you want to deploy the protocol using docker-compose.
-
-## 4. Checking contracts in explorer
-
-For each published package, get the transaction id `YOUR_TX_ID` and replace it in the url below to see more data. Also make
-sure you are using the correct network in the url - `devnet` or `testnet`.
-
-> <https://explorer.aptoslabs.com/txn/{YOUR_TX_ID}?network=NETWORK_NAME>
-
-## 5. Running Aptos Unit Tests
-
-These tests do not require any published data and can thus be executed every time, prerequisite being we have all named
-addresses set:
-
-```shell
-make test-all
-```
-
-## 6. Running Typescript Integration/e2e Tests
-
-These tests are only to be run after having successfully published all packages:
-
-```shell
+```bash
 make ts-test
 ```
 
-## 7. Creating Aptos Documentation
+---
 
-To create extensive Aptos documentation for all modules usually generated under the `doc` folder of each package, run:
+## 📝 Generate Aptos Move Docs
 
-```shell
+Generate full module documentation across all packages:
+
+```bash
 make doc-all
 ```
+
+Docs will be generated under each package's `doc/` directory.
+
+---
+
+## 🔐 Security Audits
+
+All audit reports related to Aave's Move implementation on Aptos are stored in the `/audits` directory at the root of this repository.
+
+### 📁 Audit Directory Structure
+
+```bash
+/audits
+├── Aave Aptos Core V3.0.2 Report.pdf
+├── Aave Aptos Core V3.1-V3.3 Report.pdf
+└── Aave Aptos Periphery Report.pdf
+```
+
+📂 [Browse Audit Reports](/audits)

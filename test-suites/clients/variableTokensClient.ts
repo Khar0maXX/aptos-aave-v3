@@ -45,18 +45,18 @@ export class VariableTokensClient extends AptosContractWrapperBaseClass {
     return resp as number;
   }
 
-  public async getMetadataBySymbol(owner: AccountAddress, symbol: string): Promise<AccountAddress> {
-    const [resp] = await this.callViewMethod(VariableGetMetadataBySymbolFuncAddr, [owner, symbol]);
+  public async getMetadataBySymbol(symbol: string): Promise<AccountAddress> {
+    const [resp] = await this.callViewMethod(VariableGetMetadataBySymbolFuncAddr, [symbol]);
     return AccountAddress.fromString((resp as Metadata).inner);
   }
 
-  public async getTokenAddress(owner: AccountAddress, symbol: string): Promise<AccountAddress> {
-    const [resp] = await this.callViewMethod(VariableGetTokenAddressFuncAddr, [owner, symbol]);
+  public async getTokenAddress(symbol: string): Promise<AccountAddress> {
+    const [resp] = await this.callViewMethod(VariableGetTokenAddressFuncAddr, [symbol]);
     return AccountAddress.fromString(resp as string);
   }
 
-  public async getAssetMetadata(owner: AccountAddress, symbol: string): Promise<AccountAddress> {
-    const [resp] = await this.callViewMethod(VariableGetAssetMetadataFuncAddr, [owner, symbol]);
+  public async getAssetMetadata(symbol: string): Promise<AccountAddress> {
+    const [resp] = await this.callViewMethod(VariableGetAssetMetadataFuncAddr, [symbol]);
     return AccountAddress.fromString((resp as Metadata).inner);
   }
 

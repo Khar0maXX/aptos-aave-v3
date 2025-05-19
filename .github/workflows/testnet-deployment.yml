@@ -37,10 +37,13 @@ jobs:
       # common settings
       CARGO_TERM_COLOR: always
       GITHUB_ACTIONS: true
+      MOVE_VERSION: 2.1
+      COMPILER_VERSION: 2.0
       ARTIFACTS_LEVEL: all
       DEFAULT_FUND_AMOUNT: 40000000
       APTOS_NETWORK: ${{ github.event.inputs.network }}
       UPGRADE_CONTRACTS: ${{ github.event.inputs.upgradeContracts }}
+      DEFAULT_FUNDER_PRIVATE_KEY: ${{ secrets.GH_DEFAULT_FUNDER_PRIVATE_KEY }}
 
       # external profiles
       CHAINLINK_DATA_FEEDS: ${{ secrets.GH_CHAINLINK_DATA_FEEDS }}
@@ -50,15 +53,13 @@ jobs:
       AAVE_ACL_PRIVATE_KEY: ${{ secrets.GH_AAVE_ACL_PRIVATE_KEY }}
       AAVE_CONFIG_PRIVATE_KEY: ${{ secrets.GH_AAVE_CONFIG_PRIVATE_KEY }}
       AAVE_MATH_PRIVATE_KEY: ${{ secrets.GH_AAVE_MATH_PRIVATE_KEY }}
-      AAVE_RATE_PRIVATE_KEY: ${{ secrets.GH_AAVE_RATE_PRIVATE_KEY }}
       AAVE_ORACLE_PRIVATE_KEY: ${{ secrets.GH_AAVE_ORACLE_PRIVATE_KEY }}
       AAVE_POOL_PRIVATE_KEY: ${{ secrets.GH_AAVE_POOL_PRIVATE_KEY }}
       A_TOKENS_PRIVATE_KEY: ${{ secrets.GH_A_TOKENS_PRIVATE_KEY }}
-      UNDERLYING_TOKENS_PRIVATE_KEY: ${{ secrets.GH_UNDERLYING_TOKENS_PRIVATE_KEY }}
+      AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY: ${{ secrets.GH_AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY }}
       VARIABLE_TOKENS_PRIVATE_KEY: ${{ secrets.GH_VARIABLE_TOKENS_PRIVATE_KEY }}
       AAVE_LARGE_PACKAGES_PRIVATE_KEY: ${{ secrets.GH_AAVE_LARGE_PACKAGES_PRIVATE_KEY }}
       AAVE_DATA_PRIVATE_KEY: ${{ secrets.GH_AAVE_DATA_PRIVATE_KEY }}
-      DEFAULT_FUNDER_PRIVATE_KEY: ${{ secrets.GH_DEFAULT_FUNDER_PRIVATE_KEY }}
 
       # test profiles
       TEST_ACCOUNT_0_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_0_PRIVATE_KEY }}
@@ -79,9 +80,9 @@ jobs:
           sudo apt-get install -y libudev-dev lld libdw-dev
 
       - name: Install Aptos CLI
-        run: |
-          curl -fsSL "https://aptos.dev/scripts/install_cli.py" | python3
-          aptos --version  # Verify that Aptos CLI is installed
+        uses: ./.github/actions/install-aptos-cli
+        with:
+          version: "6.2.0"
 
       - name: Set Aptos Workspace Config
         run: make set-workspace-config
@@ -110,45 +111,23 @@ jobs:
       - name: Run Aptos Publish All Contracts
         run: make publish-all
 
-      - name: Install Node.js
-        if: ${{ github.event.inputs.initData == 'true' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      - name: Run Script - Configure Acl
+        run: make configure-acl
 
-      - name: Install pnpm
-        if: ${{ github.event.inputs.initData == 'true' }}
-        uses: pnpm/action-setup@v3
-        with:
-          version: 8
-          run_install: false
+      - name: Run Script - Create Reserves
+        run: make create-reserves
 
-      - name: Get pnpm store directory
-        if: ${{ github.event.inputs.initData == 'true' }}
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Run Script - Create Emodes
+        run: make create-emodes
 
-      - name: Setup pnpm cache
-        if: ${{ github.event.inputs.initData == 'true' }}
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+      - name: Run Script - Configure Reserves
+        run: make configure-reserves
 
-      - name: Install npm dependencies
-        if: ${{ github.event.inputs.initData == 'true' }}
-        run: pnpm install
-        working-directory: test-suites
+      - name: Run Script - Configure Interest Rates
+        run: make configure-interest-rates
 
-      - name: Initialize Data
-        if: ${{ github.event.inputs.initData == 'true' }}
-        run: pnpm run deploy:init-data
-        working-directory: test-suites
+      - name: Run Script - Configure Interest Rates
+        run: make configure-interest-rates
 
-      - name: Running Core Operations
-        if: ${{ github.event.inputs.initData == 'true' }}
-        run: pnpm run deploy:core-operations
-        working-directory: test-suites
+      - name: Run Script - Configure Price Feeds
+        run: make configure-price-feeds

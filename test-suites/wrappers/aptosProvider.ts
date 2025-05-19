@@ -3,6 +3,8 @@ import {
   Network,
   Ed25519PrivateKey,
   AptosConfig,
+  PrivateKey,
+  PrivateKeyVariants,
   Aptos,
   AccountAddress,
   Ed25519Account,
@@ -15,7 +17,7 @@ export interface AptosProviderConfig {
   network: Network;
   addresses: {
     A_TOKENS: string;
-    UNDERLYING_TOKENS: string;
+    AAVE_MOCK_UNDERLYINGS: string;
     VARIABLE_TOKENS: string;
     AAVE_ACL: string;
     AAVE_CONFIG: string;
@@ -41,11 +43,10 @@ export interface AptosAccountConfig {
 
 export enum AAVE_PROFILES {
   A_TOKENS = "a_tokens",
-  UNDERLYING_TOKENS = "underlying_tokens",
+  AAVE_MOCK_UNDERLYINGS = "aave_mock_underlyings",
   VARIABLE_TOKENS = "variable_tokens",
   AAVE_ACL = "aave_acl",
   AAVE_CONFIG = "aave_config",
-  AAVE_RATE = "aave_rate",
   AAVE_ORACLE = "aave_oracle",
   AAVE_POOL = "aave_pool",
   AAVE_LARGE_PACKAGES = "aave_large_packages",
@@ -73,8 +74,6 @@ export interface AccountProfileConfig {
 export class AptosProvider {
   private network: Network;
 
-  private oracleUrl: string;
-
   private profileAddressMap: Map<string, AccountAddress> = new Map();
   private profileAccountMap: Map<string, Ed25519PrivateKey> = new Map();
 
@@ -85,11 +84,10 @@ export class AptosProvider {
   public static fromConfig(config: AptosProviderConfig): AptosProvider {
     const aptosProvider = new AptosProvider();
     aptosProvider.setNetwork(config.network);
-    aptosProvider.setOracleUrl(config.oracle.URL);
     aptosProvider.addProfileAddress(AAVE_PROFILES.A_TOKENS, AccountAddress.fromString(config.addresses.A_TOKENS));
     aptosProvider.addProfileAddress(
-      AAVE_PROFILES.UNDERLYING_TOKENS,
-      AccountAddress.fromString(config.addresses.UNDERLYING_TOKENS),
+      AAVE_PROFILES.AAVE_MOCK_UNDERLYINGS,
+      AccountAddress.fromString(config.addresses.AAVE_MOCK_UNDERLYINGS),
     );
     aptosProvider.addProfileAddress(
       AAVE_PROFILES.VARIABLE_TOKENS,
@@ -137,7 +135,8 @@ export class AptosProvider {
           throw new Error(`Unknown network ${profileConfig.network ? profileConfig.network : "undefined"}`);
       }
 
-      const aptosPrivateKey = new Ed25519PrivateKey(profileConfig.private_key);
+      const formattedKey = PrivateKey.formatPrivateKey(profileConfig.private_key, PrivateKeyVariants.Ed25519);
+      const aptosPrivateKey = new Ed25519PrivateKey(formattedKey);
       aptosProvider.addProfileAccount(profile, aptosPrivateKey);
       const profileAccount = Account.fromPrivateKey({
         privateKey: aptosPrivateKey,
@@ -178,18 +177,16 @@ export class AptosProvider {
         throw new Error(`Unknown network ${process.env.APTOS_NETWORK ? process.env.APTOS_NETWORK : "undefined"}`);
     }
 
-    aptosProvider.setOracleUrl("");
-
     // read envs
     if (!process.env.A_TOKENS_PRIVATE_KEY) {
       throw new Error("Env variable A_TOKENS_PRIVATE_KEY does not exist");
     }
     addProfilePkey(aptosProvider, AAVE_PROFILES.A_TOKENS, process.env.A_TOKENS_PRIVATE_KEY);
 
-    if (!process.env.UNDERLYING_TOKENS_PRIVATE_KEY) {
-      throw new Error("Env variable UNDERLYING_TOKENS_PRIVATE_KEY does not exist");
+    if (!process.env.AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY) {
+      throw new Error("Env variable AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY does not exist");
     }
-    addProfilePkey(aptosProvider, AAVE_PROFILES.UNDERLYING_TOKENS, process.env.UNDERLYING_TOKENS_PRIVATE_KEY);
+    addProfilePkey(aptosProvider, AAVE_PROFILES.AAVE_MOCK_UNDERLYINGS, process.env.AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY);
 
     if (!process.env.VARIABLE_TOKENS_PRIVATE_KEY) {
       throw new Error("Env variable VARIABLE_TOKENS_PRIVATE_KEY does not exist");
@@ -201,20 +198,10 @@ export class AptosProvider {
     }
     addProfilePkey(aptosProvider, AAVE_PROFILES.AAVE_ACL, process.env.AAVE_ACL_PRIVATE_KEY);
 
-    if (!process.env.AAVE_RATE_PRIVATE_KEY) {
-      throw new Error("Env variable AAVE_RATE_PRIVATE_KEY does not exist");
-    }
-    addProfilePkey(aptosProvider, AAVE_PROFILES.AAVE_RATE, process.env.AAVE_RATE_PRIVATE_KEY);
-
     if (!process.env.AAVE_CONFIG_PRIVATE_KEY) {
       throw new Error("Env variable AAVE_CONFIG_PRIVATE_KEY does not exist");
     }
     addProfilePkey(aptosProvider, AAVE_PROFILES.AAVE_CONFIG, process.env.AAVE_CONFIG_PRIVATE_KEY);
-
-    if (!process.env.AAVE_ORACLE_PRIVATE_KEY) {
-      throw new Error("Env variable AAVE_ORACLE_PRIVATE_KEY does not exist");
-    }
-    addProfilePkey(aptosProvider, AAVE_PROFILES.AAVE_ORACLE, process.env.AAVE_ORACLE_PRIVATE_KEY);
 
     if (!process.env.AAVE_ORACLE_PRIVATE_KEY) {
       throw new Error("Env variable AAVE_ORACLE_PRIVATE_KEY does not exist");
@@ -305,17 +292,8 @@ export class AptosProvider {
     return this.network;
   }
 
-  /** Gets the oracle url. */
-  public getOracleUrl(): string {
-    return this.oracleUrl;
-  }
-
   public setNetwork(network: Network) {
     this.network = network;
-  }
-
-  public setOracleUrl(oracleUrl: string) {
-    this.oracleUrl = oracleUrl;
   }
 
   public addProfileAddress(profileName: string, address: AccountAddress) {
@@ -343,7 +321,7 @@ export class AptosProvider {
   }
 
   public getUnderlyingTokensProfileAccount(): Ed25519Account {
-    return this.getProfileAccountByName(AAVE_PROFILES.UNDERLYING_TOKENS);
+    return this.getProfileAccountByName(AAVE_PROFILES.AAVE_MOCK_UNDERLYINGS);
   }
 
   public getVariableTokensProfileAccount(): Ed25519Account {
@@ -356,7 +334,8 @@ export class AptosProvider {
 }
 
 const addProfilePkey = (aptosProvider: AptosProvider, profile: string, privateKey: string) => {
-  const aptosPrivateKey = new Ed25519PrivateKey(privateKey);
+  const formattedKey = PrivateKey.formatPrivateKey(privateKey, PrivateKeyVariants.Ed25519);
+  const aptosPrivateKey = new Ed25519PrivateKey(formattedKey);
   aptosProvider.addProfileAccount(profile, aptosPrivateKey);
   const profileAccount = Account.fromPrivateKey({
     privateKey: aptosPrivateKey,

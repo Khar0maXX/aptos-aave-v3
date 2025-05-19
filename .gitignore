@@ -15,7 +15,7 @@ pids
 lib-cov
 
 # Coverage directory used by tools like istanbul
-coverage
+coverage/**/*.csv
 
 # nyc test coverage
 .nyc_output
@@ -95,3 +95,7 @@ target/
 *.mvcov
 *.trace
 gas-profiling
+coverage.lcov
+test-suites/coverage/**/*.*
+doc/
+aave-core/aave-*/doc/**/.*.*

@@ -110,7 +110,7 @@ describe("Supply Unit Test", () => {
     ]);
 
     const user1 = users[1];
-    await Transaction(aptos, user1, PoolConfiguratorSetReservePauseFuncAddr, [dai, true]);
+    await Transaction(aptos, user1, PoolConfiguratorSetReservePauseFuncAddr, [dai, true, 0]);
 
     try {
       await Transaction(aptos, user, SupplyFuncAddr, [dai, daiDepositAmount, user.accountAddress.toString(), 0]);
@@ -118,7 +118,7 @@ describe("Supply Unit Test", () => {
       // console.log("err:", err.toString());
       expect(err.toString().includes("validation_logic: 0x1d")).toBe(true);
     }
-    await Transaction(aptos, user1, PoolConfiguratorSetReservePauseFuncAddr, [dai, false]);
+    await Transaction(aptos, user1, PoolConfiguratorSetReservePauseFuncAddr, [dai, false, 0]);
   });
 
   it("Tries to supply 1001 DAI  (> SUPPLY_CAP) 1 unit above the limit", async () => {
