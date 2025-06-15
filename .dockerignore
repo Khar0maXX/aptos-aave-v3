@@ -100,7 +100,7 @@ gas-profiling
 aave-core/build/
 aave-core/doc/
 aave-core/tests/
-test-suites/node_modules/
+aave-test-suite/node_modules/
 
 # local aptos and gh
 .aptos/
