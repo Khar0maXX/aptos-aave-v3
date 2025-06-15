@@ -813,6 +813,11 @@ module aave_pool::pool_tests {
             aave_oracle, underlying_u1_token_address, underlying_u1_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_oracle, 100, underlying_u1_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_oracle,
+            underlying_u1_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // set siloed borrowing
         reserve_config::set_siloed_borrowing(&mut reserve_config_map, true);

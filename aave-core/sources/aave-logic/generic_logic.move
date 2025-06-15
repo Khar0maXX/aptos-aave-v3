@@ -14,57 +14,6 @@ module aave_pool::generic_logic {
     use aave_pool::pool::{Self, ReserveData};
     use aave_pool::variable_debt_token_factory;
 
-    // Structs
-    /// @notice Structure to hold variables during user account data calculation
-    /// @dev Used to avoid stack too deep errors and to organize the calculation process
-    struct CalculateUserAccountDataVars has drop {
-        asset_price: u256,
-        asset_unit: u256,
-        user_balance_in_base_currency: u256,
-        decimals: u256,
-        ltv: u256,
-        liquidation_threshold: u256,
-        i: u256,
-        health_factor: u256,
-        total_collateral_in_base_currency: u256,
-        total_debt_in_base_currency: u256,
-        avg_ltv: u256,
-        avg_liquidation_threshold: u256,
-        emode_ltv: u256,
-        emode_liq_threshold: u256,
-        emode_asset_category: u256,
-        current_reserve_address: address,
-        has_zero_ltv_collateral: bool,
-        is_in_emode_category: bool
-    }
-
-    // Private functions
-    /// @notice Creates and initializes a new CalculateUserAccountDataVars struct
-    /// @dev Sets all numeric values to 0 and boolean values to false
-    /// @return A new initialized CalculateUserAccountDataVars struct
-    fun create_calculate_user_account_data_vars(): CalculateUserAccountDataVars {
-        CalculateUserAccountDataVars {
-            asset_price: 0,
-            asset_unit: 0,
-            user_balance_in_base_currency: 0,
-            decimals: 0,
-            ltv: 0,
-            liquidation_threshold: 0,
-            i: 0,
-            health_factor: 0,
-            total_collateral_in_base_currency: 0,
-            total_debt_in_base_currency: 0,
-            avg_ltv: 0,
-            avg_liquidation_threshold: 0,
-            emode_ltv: 0,
-            emode_liq_threshold: 0,
-            emode_asset_category: 0,
-            current_reserve_address: @0x0,
-            has_zero_ltv_collateral: false,
-            is_in_emode_category: false
-        }
-    }
-
     /// @notice Calculates total debt of the user in the based currency used to normalize the values of the assets
     /// @dev The variable debt balance is calculated by fetching `scaled_balance_of` normalized debt
     /// @param user The address of the user
@@ -145,129 +94,113 @@ module aave_pool::generic_logic {
             return (0, 0, 0, 0, math_utils::u256_max(), false)
         };
 
-        let vars = create_calculate_user_account_data_vars();
-        if (user_emode_category != 0) {
-            vars.emode_ltv = emode_ltv;
-            vars.emode_liq_threshold = emode_liq_threshold;
-        };
+        let total_collateral_in_base_currency = 0;
+        let total_debt_in_base_currency = 0;
+        let average_ltv = 0;
+        let average_liquidation_threshold = 0;
+        let has_zero_ltv_collateral = false;
 
-        while (vars.i < reserves_count) {
-            if (!user_config::is_using_as_collateral_or_borrowing(
-                user_config_map, vars.i
-            )) {
-                vars.i = vars.i + 1;
+        let i = 0;
+        while (i < reserves_count) {
+            if (!user_config::is_using_as_collateral_or_borrowing(user_config_map, i)) {
+                i = i + 1;
                 continue
             };
 
-            vars.current_reserve_address = pool::get_reserve_address_by_id(vars.i);
+            let current_reserve_address = pool::get_reserve_address_by_id(i);
             // `get_reserve_address_by_id` returns @0x0 if the id does not exist
-            if (vars.current_reserve_address == @0x0) {
-                vars.i = vars.i + 1;
+            if (current_reserve_address == @0x0) {
+                i = i + 1;
                 continue
             };
 
-            let current_reserve = pool::get_reserve_data(vars.current_reserve_address);
+            let current_reserve = pool::get_reserve_data(current_reserve_address);
             let current_reserve_config_map =
                 pool::get_reserve_configuration_by_reserve_data(current_reserve);
             let (ltv, liquidation_threshold, _, decimals, _, emode_asset_category) =
                 reserve_config::get_params(&current_reserve_config_map);
-            vars.ltv = ltv;
-            vars.liquidation_threshold = liquidation_threshold;
-            vars.decimals = decimals;
-            vars.emode_asset_category = emode_asset_category;
 
-            vars.asset_unit = math_utils::pow(10, vars.decimals);
+            let asset_unit = math_utils::pow(10, decimals);
+            let asset_price = oracle::get_asset_price(current_reserve_address);
 
-            vars.asset_price = oracle::get_asset_price(vars.current_reserve_address);
+            if (liquidation_threshold != 0
+                && user_config::is_using_as_collateral(user_config_map, i)) {
+                let user_balance_in_base_currency =
+                    get_user_balance_in_base_currency(
+                        user, current_reserve, asset_price, asset_unit
+                    );
 
-            if (vars.liquidation_threshold != 0
-                && user_config::is_using_as_collateral(user_config_map, vars.i)) {
-                vars.user_balance_in_base_currency = get_user_balance_in_base_currency(
-                    user,
-                    current_reserve,
-                    vars.asset_price,
-                    vars.asset_unit
-                );
+                total_collateral_in_base_currency =
+                    total_collateral_in_base_currency + user_balance_in_base_currency;
 
-                vars.total_collateral_in_base_currency =
-                    vars.total_collateral_in_base_currency
-                        + vars.user_balance_in_base_currency;
-
-                vars.is_in_emode_category =
+                let is_in_emode_category =
                     user_emode_category != 0
-                        && vars.emode_asset_category == (user_emode_category as u256);
+                        && emode_asset_category == (user_emode_category as u256);
 
                 // NOTE: if the reserve's LTV is zero but its eMode category's LTV is non-zero,
                 // the reserve's LTV supersedes eMode LTV, this is an intended behavior.
-                if (vars.ltv != 0) {
-                    let ltv =
-                        if (vars.is_in_emode_category) {
-                            vars.emode_ltv
-                        } else {
-                            vars.ltv
-                        };
-                    vars.avg_ltv = vars.avg_ltv
-                        + vars.user_balance_in_base_currency * ltv;
+                if (ltv != 0) {
+                    let actual_ltv = if (is_in_emode_category) {
+                        emode_ltv
+                    } else { ltv };
+                    average_ltv = average_ltv
+                        + user_balance_in_base_currency * actual_ltv;
                 } else {
-                    vars.has_zero_ltv_collateral = true
+                    has_zero_ltv_collateral = true
                 };
 
-                let liquidation_threshold =
-                    if (vars.is_in_emode_category) {
-                        vars.emode_liq_threshold
+                let actual_liquidation_threshold =
+                    if (is_in_emode_category) {
+                        emode_liq_threshold
                     } else {
-                        vars.liquidation_threshold
+                        liquidation_threshold
                     };
-                vars.avg_liquidation_threshold =
-                    vars.avg_liquidation_threshold
-                        + vars.user_balance_in_base_currency * liquidation_threshold;
+                average_liquidation_threshold =
+                    average_liquidation_threshold
+                        + user_balance_in_base_currency * actual_liquidation_threshold;
             };
 
-            if (user_config::is_borrowing(user_config_map, vars.i)) {
+            if (user_config::is_borrowing(user_config_map, i)) {
                 let user_debt_in_base_currency =
                     get_user_debt_in_base_currency(
-                        user,
-                        current_reserve,
-                        vars.asset_price,
-                        vars.asset_unit
+                        user, current_reserve, asset_price, asset_unit
                     );
-                vars.total_debt_in_base_currency =
-                    vars.total_debt_in_base_currency + user_debt_in_base_currency;
+                total_debt_in_base_currency =
+                    total_debt_in_base_currency + user_debt_in_base_currency;
             };
 
-            vars.i = vars.i + 1;
+            i = i + 1;
         };
 
-        vars.avg_ltv =
-            if (vars.total_collateral_in_base_currency != 0) {
-                vars.avg_ltv / vars.total_collateral_in_base_currency
-            } else { 0 };
+        if (total_collateral_in_base_currency != 0) {
+            average_ltv = average_ltv / total_collateral_in_base_currency;
+            average_liquidation_threshold =
+                average_liquidation_threshold / total_collateral_in_base_currency;
+        } else {
+            average_ltv = 0;
+            average_liquidation_threshold = 0;
+        };
 
-        vars.avg_liquidation_threshold =
-            if (vars.total_collateral_in_base_currency != 0) {
-                vars.avg_liquidation_threshold / vars.total_collateral_in_base_currency
-            } else { 0 };
-
-        vars.health_factor =
-            if (vars.total_debt_in_base_currency == 0) {
+        let health_factor =
+            if (total_debt_in_base_currency == 0) {
                 math_utils::u256_max()
             } else {
                 wad_ray_math::wad_div(
                     math_utils::percent_mul(
-                        vars.total_collateral_in_base_currency,
-                        vars.avg_liquidation_threshold
+                        total_collateral_in_base_currency,
+                        average_liquidation_threshold
                     ),
-                    vars.total_debt_in_base_currency
+                    total_debt_in_base_currency
                 )
             };
 
         return (
-            vars.total_collateral_in_base_currency,
-            vars.total_debt_in_base_currency,
-            vars.avg_ltv,
-            vars.avg_liquidation_threshold,
-            vars.health_factor,
-            vars.has_zero_ltv_collateral
+            total_collateral_in_base_currency,
+            total_debt_in_base_currency,
+            average_ltv,
+            average_liquidation_threshold,
+            health_factor,
+            has_zero_ltv_collateral
         )
     }
 

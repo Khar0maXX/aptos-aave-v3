@@ -94,7 +94,8 @@ module aave_math::math_utils {
     /// @notice Executes a percentage multiplication
     /// @param value The value of which the percentage needs to be calculated
     /// @param percentage The percentage of the value to be calculated
-    /// @return result The value multiplied by the percentage and divided by the percentage factor
+    /// @return result The value multiplied by the percentage and divided by the percentage factor,
+    ///         rounded half up to the nearest unit
     public fun percent_mul(value: u256, percentage: u256): u256 {
         if (value == 0 || percentage == 0) {
             return 0
@@ -109,7 +110,8 @@ module aave_math::math_utils {
     /// @notice Executes a percentage division
     /// @param value The value of which the percentage needs to be calculated
     /// @param percentage The percentage of the value to be calculated
-    /// @return result The value multiplied by the percentage factor and divided by the percentage
+    /// @return result The value multiplied by the percentage factor and divided by the percentage,
+    ///         rounded half up to the nearest unit
     public fun percent_div(value: u256, percentage: u256): u256 {
         assert!(percentage > 0, error_config::get_edivision_by_zero());
         assert!(
@@ -136,14 +138,13 @@ module aave_math::math_utils {
         result
     }
 
-    // Test-only functions
-    #[test_only]
-    /// @dev Returns the seconds per year value for testing
+    /// @dev Returns the seconds per year value
     /// @return Seconds per year constant
-    public fun get_seconds_per_year_for_testing(): u256 {
+    public fun get_seconds_per_year(): u256 {
         SECONDS_PER_YEAR
     }
 
+    // Test-only functions
     #[test_only]
     /// @dev Returns the half percentage factor for testing
     /// @return Half percentage factor constant

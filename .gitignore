@@ -67,6 +67,10 @@ dist/
 bundle.*
 
 # docs files
+my-docs/site
+my-docs/docs/**/*.md
+!my-docs/docs/index.md
+
 docs
 
 # Misc
@@ -96,6 +100,7 @@ target/
 *.trace
 gas-profiling
 coverage.lcov
-test-suites/coverage/**/*.*
+aave-test-suite/coverage/**/*.*
 doc/
-aave-core/aave-*/doc/**/.*.*
+aave-core/aave-*/doc/**/*.*
+my-docs/site

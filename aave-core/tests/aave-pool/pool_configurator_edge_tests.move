@@ -962,6 +962,9 @@ module aave_pool::pool_configurator_edge_tests {
             aave_oracle, underlying_u1_token_address, underlying_u1_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_oracle, 100, underlying_u1_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_oracle, underlying_u1_token_address, 10000000
+        );
 
         // set siloed borrowing for U_1 token
         set_siloed_borrowing(aave_pool, underlying_u1_token_address, false);
@@ -1002,6 +1005,9 @@ module aave_pool::pool_configurator_edge_tests {
             aave_oracle, underlying_u2_token_address, underlying_u2_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_oracle, 100, underlying_u2_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_oracle, underlying_u2_token_address, 10000000
+        );
 
         // user 2 supplies 1000 U_2
         let supply_amount =

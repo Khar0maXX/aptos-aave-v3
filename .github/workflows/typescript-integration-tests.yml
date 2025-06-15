@@ -12,7 +12,6 @@ env:
   APTOS_NETWORK: local
   MOVE_VERSION: 2.1
   COMPILER_VERSION: 2.0
-  UPGRADE_CONTRACTS: true
   ARTIFACTS_LEVEL: all
   DEFAULT_FUND_AMOUNT: 100000000
   DEFAULT_FUNDER_PRIVATE_KEY: ${{ secrets.GH_DEFAULT_FUNDER_PRIVATE_KEY }}
@@ -23,9 +22,7 @@ env:
   AAVE_MATH_PRIVATE_KEY: ${{ secrets.GH_AAVE_MATH_PRIVATE_KEY }}
   AAVE_ORACLE_PRIVATE_KEY: ${{ secrets.GH_AAVE_ORACLE_PRIVATE_KEY }}
   AAVE_POOL_PRIVATE_KEY: ${{ secrets.GH_AAVE_POOL_PRIVATE_KEY }}
-  A_TOKENS_PRIVATE_KEY: ${{ secrets.GH_A_TOKENS_PRIVATE_KEY }}
   AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY: ${{ secrets.GH_AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY }}
-  VARIABLE_TOKENS_PRIVATE_KEY: ${{ secrets.GH_VARIABLE_TOKENS_PRIVATE_KEY }}
   AAVE_LARGE_PACKAGES_PRIVATE_KEY: ${{ secrets.GH_AAVE_LARGE_PACKAGES_PRIVATE_KEY }}
   AAVE_DATA_PRIVATE_KEY: ${{ secrets.GH_AAVE_DATA_PRIVATE_KEY }}
   AAVE_DATA_FEEDS_PRIVATE_KEY: ${{ secrets.GH_AAVE_DATA_FEEDS_PRIVATE_KEY }}
@@ -53,7 +50,6 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y libudev-dev lld libdw-dev
 
       - name: Install Aptos CLI
         uses: ./.github/actions/install-aptos-cli
@@ -85,8 +81,7 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install npm dependencies
-        run: pnpm install
-        working-directory: test-suites
+        run: pnpm install --no-frozen-lockfile
 
       - name: Run Aptos Create Local Testnet
         run: |
@@ -123,11 +118,11 @@ jobs:
 
       - name: Run init test data
         run: pnpm deploy:init-data
-        working-directory: test-suites
+        working-directory: aave-test-suite
 
       - name: Run integration tests logic
         run: pnpm test:all
-        working-directory: test-suites
+        working-directory: aave-test-suite
 
       - name: Terminate Aptos Local Testnet
         if: always()

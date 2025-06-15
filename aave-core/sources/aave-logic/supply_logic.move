@@ -143,7 +143,7 @@ module aave_pool::supply_logic {
     /// @notice Supplies an `amount` of underlying asset of type Coin into the reserve, receiving in return overlying aTokens.
     /// - E.g. User supplies 100 APT and gets in return 100 aAPT
     /// @param account The account signer that will supply the asset
-    /// @param asset The address of the underlying asset of type coint to supply
+    /// @param asset The address of the underlying asset of type coin to supply
     /// @param amount The amount to be supplied
     /// @param on_behalf_of The address that will receive the aTokens, same as account address if the user
     /// wants to receive them on his own wallet, or a different address if the beneficiary of aTokens
@@ -174,7 +174,7 @@ module aave_pool::supply_logic {
     /// @param account The account signer that will withdraw the asset
     /// @param asset The address of the underlying asset to withdraw
     /// @param amount The underlying amount to be withdrawn
-    ///   - Send the value type(uint256).max in order to withdraw the whole aToken balance
+    ///   - Send the value math_utils::u256_max() in order to withdraw the whole aToken balance
     /// @param to The address that will receive the underlying, same as account address if the user
     ///   wants to receive it on his own wallet, or a different address if the beneficiary is a
     ///   different wallet

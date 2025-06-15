@@ -21,7 +21,6 @@ module aave_pool::a_token_factory {
     use aave_acl::acl_manage;
     use aave_config::error_config;
     use aave_math::wad_ray_math;
-    use aave_pool::token_base::only_pool_admin;
     use aave_pool::pool;
     use aave_pool::fungible_asset_manager;
     use aave_pool::token_base;
@@ -69,6 +68,26 @@ module aave_pool::a_token_factory {
         a_token_decimals: u8,
         a_token_name: String,
         a_token_symbol: String
+    }
+
+    #[event]
+    /// @notice Emitted when a token is being rescued
+    /// @dev Emitted during the the rescue tokens method
+    /// @param from The account from which the token is being transferred/rescued
+    /// @param to The receiver of the rescued tokens
+    /// @param amount The amount being transferred during rescue
+    /// @param a_token_address The address of the aToken
+    struct TokenRescued has store, drop {
+        /// @dev The rescuer address
+        rescuer: address,
+        /// @dev The source address
+        from: address,
+        /// @dev The destination address
+        to: address,
+        /// @dev The amount being transferred/rescued (scaled)
+        amount: u256,
+        /// @dev The address of the corresponding aToken
+        a_token_address: address
     }
 
     #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
@@ -323,6 +342,15 @@ module aave_pool::a_token_factory {
             (amount as u64),
             token
         );
+        event::emit(
+            TokenRescued {
+                rescuer: signer::address_of(account),
+                from: signer::address_of(&a_token_resource_account),
+                to,
+                amount,
+                a_token_address: metadata_address
+            }
+        );
     }
 
     // Public functions
@@ -539,7 +567,6 @@ module aave_pool::a_token_factory {
     public(friend) fun set_incentives_controller(
         admin: &signer, metadata_address: address, incentives_controller: Option<address>
     ) {
-        only_pool_admin(admin);
         token_base::set_incentives_controller(
             admin, metadata_address, incentives_controller
         );

@@ -8,12 +8,12 @@
     </p>
     <p align="center">
         <a href="https://github.com/aave/aptos-aave-v3/actions/workflows/unit_tests.yml" style="text-decoration: none; ">
-            <img src="https://github.com/aave/aptos-aave-v3/actions/workflows/unit_tests.yml/badge.svg?branch=feat/evgeni/cl-coverage" alt="CI">
+            <img src="https://github.com/aave/aptos-aave-v3/actions/workflows/unit_tests.yml/badge.svg" alt="CI">
         </a>
         <a href="https://codecov.io/gh/aave/aptos-aave-v3" style="text-decoration: none;">
-          <img src="https://codecov.io/gh/aave/aptos-aave-v3/branch/feat%2Fevgeni%2Fcl-coverage/graph/badge.svg?token=GzsXGvIv0r" alt="Coverage"/>
+          <img src="https://codecov.io/gh/aave/aptos-aave-v3/branch/main/graph/badge.svg?token=GzsXGvIv0r" alt="Coverage"/>
         </a>
-        <a href="https://github.com/aave/aptos-aave-v3/blob/feat/evgeni/cl-coverage/LICENSE" style="text-decoration: none;">
+        <a href="https://github.com/aave/aptos-aave-v3/blob/main/LICENSE" style="text-decoration: none;">
           <img src="https://img.shields.io/badge/license-MIT-007EC7.svg" alt="License"/>
         </a>
     </p>
@@ -31,12 +31,11 @@
 ```bash=
 ├── aave-acl                // Access control list Package
 ├── aave-config             // Configurator Package
-├── aave-data               // Data Configurations
+├── aave-data               // Data & Deployment Configurations
 ├── aave-large-packages     // Large Packages Package
 ├── aave-math               // Math library Package
 ├── aave-mock-underlyings   // Mock Underlyings Package
 ├── aave-oracle             // Oracle Package
-├── aave-scripts            // Deployment Scripts
 ├── aave-core               // Core Package
 ```
 
@@ -51,6 +50,7 @@ flowchart TD
   aave-config
   chainlink-data-feeds
   aave-large-packages
+  aave-mock-underlyings
 
   %% Level 2
   aave-acl --> aave-config
@@ -68,15 +68,11 @@ flowchart TD
   aave-pool --> aave-oracle
 
   %% Level 5
+  aave-data --> aave-acl
   aave-data --> aave-config
+  aave-data --> aave-oracle
+  aave-data --> aave-data
   aave-data --> aave-pool
-
-  %% Level 6
-  aave-scripts --> aave-acl
-  aave-scripts --> aave-config
-  aave-scripts --> aave-oracle
-  aave-scripts --> aave-data
-  aave-scripts --> aave-pool
 ```
 
 ---
@@ -205,3 +201,18 @@ All audit reports related to Aave's Move implementation on Aptos are stored in t
 ```
 
 📂 [Browse Audit Reports](/audits)
+
+---
+
+## 📚 Aave Move Smart Contract Docs
+
+Official documentation for Aave's Move-based smart contracts is now available via GitHub Pages.
+
+The docs are auto-generated from each package and published using [MkDocs Material](https://squidfunk.github.io/mkdocs-material/), with clean navigation and search.
+
+### 📥 Explore the Docs
+
+👉 **[View Smart Contract Documentation](https://aave.github.io/aptos-aave-v3)**
+Browse all modules, structs, functions, and events used across Aave's V3 Aptos packages.
+
+---

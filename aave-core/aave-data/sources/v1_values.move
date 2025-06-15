@@ -11,7 +11,9 @@ module aave_data::v1_values {
     use aptos_std::smart_table;
     use aptos_std::smart_table::SmartTable;
     use aptos_framework::aptos_coin;
+    use aptos_framework::timestamp;
     use aave_math::math_utils::Self;
+    use aave_oracle::oracle;
     // locals
     use aave_pool::coin_migrator;
 
@@ -80,6 +82,34 @@ module aave_data::v1_values {
         liquidation_bonus: u256,
         /// @dev Human-readable label
         label: String
+    }
+
+    /// @notice The type of adapter for retrieving the price
+    enum AdapterType has copy, drop, store {
+        STABLE,
+        SUSDE
+    }
+
+    /// @notice Main storage for multiple capped asset data
+    struct CappedAssetData has copy, store, key, drop {
+        /// @dev adapter type
+        type: AdapterType,
+        /// @dev stable price cap if stable adapter defined
+        stable_price_cap: Option<u256>,
+        /// @dev decimals ratio if defined
+        ratio_decimals: Option<u8>,
+        /// @dev minimum snapshot delay if defined
+        minimum_snapshot_delay: Option<u256>,
+        /// @dev snapshot timestamp if defined
+        snapshot_timestamp: Option<u256>,
+        /// @dev snapshot timestamp if defined
+        max_yearly_ratio_growth_percent: Option<u256>,
+        /// @dev max ratio growth per second if defined
+        max_ratio_growth_per_second: Option<u256>,
+        /// @dev snapshot ratio if defined
+        snapshot_ratio: Option<u256>,
+        /// @dev mapped asset ratio multiplier
+        mapped_asset_ratio_multiplier: Option<address>
     }
 
     // Public functions - EmodeConfig getters
@@ -251,6 +281,92 @@ module aave_data::v1_values {
         reserve_config.emode_category
     }
 
+    /// @notice Checks if the adapter type is STABLE
+    /// @param capped_asset_data The capped asset data configuration
+    /// @return True if the adapter type is STABLE, false otherwise
+    public fun is_stable_adapter(capped_asset_data: &CappedAssetData): bool {
+        match(capped_asset_data.type) {
+            AdapterType::STABLE => true,
+            AdapterType::SUSDE => false
+        }
+    }
+
+    /// @notice Checks if the adapter type is SUSDE
+    /// @param capped_asset_data The capped asset data configuration
+    /// @return True if the adapter type is SUSDE, false otherwise
+    public fun is_susde_adapter(capped_asset_data: &CappedAssetData): bool {
+        match(capped_asset_data.type) {
+            AdapterType::STABLE => false,
+            AdapterType::SUSDE => true
+        }
+    }
+
+    /// @notice Get the stable price cap for the asset
+    /// @param capped_asset_data The capped asset data configuration
+    /// @return The stable price cap if set, none otherwise
+    public fun get_stable_price_cap(capped_asset_data: &CappedAssetData): Option<u256> {
+        capped_asset_data.stable_price_cap
+    }
+
+    /// @notice Get the maximum ratio growth per second
+    /// @param capped_asset_data The capped asset data configuration
+    /// @return The maximum ratio growth per second if set, none otherwise
+    public fun get_max_ratio_growth_per_second(
+        capped_asset_data: &CappedAssetData
+    ): Option<u256> {
+        capped_asset_data.max_ratio_growth_per_second
+    }
+
+    /// @notice Get the snapshot timestamp
+    /// @param capped_asset_data The capped asset data configuration
+    /// @return The snapshot timestamp if set, none otherwise
+    public fun get_snapshot_timestamp(
+        capped_asset_data: &CappedAssetData
+    ): Option<u256> {
+        capped_asset_data.snapshot_timestamp
+    }
+
+    /// @notice Get the maximum yearly ratio growth percentage
+    /// @param capped_asset_data The capped asset data configuration
+    /// @return The maximum yearly ratio growth percentage if set, none otherwise
+    public fun get_max_yearly_ratio_growth_percent(
+        capped_asset_data: &CappedAssetData
+    ): Option<u256> {
+        capped_asset_data.max_yearly_ratio_growth_percent
+    }
+
+    /// @notice Get the snapshot ratio
+    /// @param capped_asset_data The capped asset data configuration
+    /// @return The snapshot ratio if set, none otherwise
+    public fun get_snapshot_ratio(capped_asset_data: &CappedAssetData): Option<u256> {
+        capped_asset_data.snapshot_ratio
+    }
+
+    /// @notice Get the minimum snapshot delay
+    /// @param capped_asset_data The capped asset data configuration
+    /// @return The minimum snapshot delay if set, none otherwise
+    public fun get_minimum_snapshot_delay(
+        capped_asset_data: &CappedAssetData
+    ): Option<u256> {
+        capped_asset_data.minimum_snapshot_delay
+    }
+
+    /// @notice Get the ratio decimals
+    /// @param capped_asset_data The capped asset data configuration
+    /// @return The ratio decimals if set, none otherwise
+    public fun get_ratio_decimals(capped_asset_data: &CappedAssetData): Option<u8> {
+        capped_asset_data.ratio_decimals
+    }
+
+    /// @notice Get the mapped asset ratio multiplier
+    /// @param capped_asset_data The capped asset data configuration
+    /// @return The mapped asset ratio multiplier, none otherwise
+    public fun get_mapped_asset_ratio_multiplier(
+        capped_asset_data: &CappedAssetData
+    ): Option<address> {
+        capped_asset_data.mapped_asset_ratio_multiplier
+    }
+
     // Public functions - Data builders
     /// @notice Build E-Mode configurations for testnet
     /// @return SmartTable of E-Mode configurations for testnet
@@ -293,56 +409,74 @@ module aave_data::v1_values {
     /// @notice Build pool admins for testnet
     /// @return Vector of pool admin addresses for testnet
     public fun build_pool_admins_testnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0x859d111e05bd4deed6fc1a94cec995e12ac2ad7bbe7cec425ef6aaebfaf5238c
+        ]
     }
 
     /// @notice Build asset listing admins for testnet
     /// @return Vector of asset listing addresses for testnet
     public fun build_asset_listing_admins_testnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0xe2b13e2d2804ecf30d4c76e9b05b07105a6cf9f59c26885379fb72e8a5e8655a
+        ]
     }
 
     /// @notice Build risk admins for testnet
     /// @return Vector of risk admin addresses for testnet
     public fun build_risk_admins_testnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0xae4b8e0abd04f47185bb3bfe759cd989a382b23af3b210a65a702798589a2dc1
+        ]
     }
 
     /// @notice Build fund admins for testnet
     /// @return Vector of fund admin addresses for testnet
     public fun build_fund_admins_testnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0xf417afab0311d4af56757c1927456e0a85fe79180d45f75441c5d61ac493cbd7
+        ]
     }
 
     /// @notice Build emergency admins for testnet
     /// @return Vector of emergency admin addresses for testnet
     public fun build_emergency_admins_testnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0xefe507f987ed9a478515a4886138a28749638f227aed74afa19d45ac7f4485a8
+        ]
     }
 
     /// @notice Build flash borrower admins for testnet
     /// @return Vector of flash borrower admin addresses for testnet
     public fun build_flash_borrower_admins_testnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0x1df092149bd414a6b6130460d010b3bec7fd303677f5f0ddaa14dcf405a2b389
+        ]
     }
 
     /// @notice Build emission admins for testnet
     /// @return Vector of emission admin addresses for testnet
     public fun build_emission_admins_testnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0x50dd0012a77fc9884b4bc460ec5c8249992e9a3d3e422b89883b4a982bfdcec9
+        ]
     }
 
     /// @notice Build admin controlled ecosystem reserve admins for testnet
     /// @return Vector of admin controlled ecosystem reserve admin addresses for testnet
     public fun build_admin_controlled_ecosystem_reserve_funds_admins_testnet():
         vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0x056d32138643b7d247be191d6e27f0d1f5352b4049a1129e2fc69eba66296361
+        ]
     }
 
     /// @notice Build rewards controller admins for testnet
     /// @return Vector of rewards controller admin addresses for testnet
     public fun build_rewards_controller_admins_testnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0x00af70319d7b1adea014e941d07bf9276c969abd76d0f0134616025bed4061fe
+        ]
     }
 
     // --------------
@@ -350,56 +484,226 @@ module aave_data::v1_values {
     /// @notice Build pool admins for mainnet
     /// @return Vector of pool admin addresses for mainnet
     public fun build_pool_admins_mainnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0x6b8d9c9f788bc100c2688ae5bddd849d5bd7308cb493f245b12e56a2d8c3ebec
+        ]
     }
 
     /// @notice Build asset listing admins for mainnet
     /// @return Vector of asset listing addresses for mainnet
     public fun build_asset_listing_admins_mainnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0xf759723ee0df506efdb74b5b17ddfd4a825456d2b6dec58703ce17da18cc6f1f
+        ]
     }
 
     /// @notice Build risk admins for mainnet
     /// @return Vector of risk admin addresses for mainnet
     public fun build_risk_admins_mainnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0x37843f5025265c4023364d3eb88ca3acdc6cb6e989908381197ad8e331be6922
+        ]
     }
 
     /// @notice Build fund admins for mainnet
     /// @return Vector of fund admin addresses for mainnet
     public fun build_fund_admins_mainnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0xeb0fb04fc3b2ab1a46811482bce030a2e698b4bc38892292a8ed1945755cd6f5
+        ]
     }
 
     /// @notice Build emergency admins for mainnet
     /// @return Vector of emergency admin addresses for mainnet
     public fun build_emergency_admins_mainnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0xee407d2dcba8127984d67b974d7ec3eaa88ca7f945796f1bfbb8aa331054b732
+        ]
     }
 
     /// @notice Build flash borrower admins for mainnet
     /// @return Vector of flash borrower admin addresses for mainnet
     public fun build_flash_borrower_admins_mainnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0xe2b13e2d2804ecf30d4c76e9b05b07105a6cf9f59c26885379fb72e8a5e8655a
+        ]
     }
 
     /// @notice Build emission admins for mainnet
     /// @return Vector of emission admin addresses for mainnet
     public fun build_emission_admins_mainnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0x859d111e05bd4deed6fc1a94cec995e12ac2ad7bbe7cec425ef6aaebfaf5238c
+        ]
     }
 
     /// @notice Build admin controlled ecosystem reserve admins for mainnet
     /// @return Vector of admin controlled ecosystem reserve admin addresses for mainnet
     public fun build_admin_controlled_ecosystem_reserve_funds_admins_mainnet():
         vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0xefe507f987ed9a478515a4886138a28749638f227aed74afa19d45ac7f4485a8
+        ]
     }
 
     /// @notice Build rewards controller admins for mainnet
     /// @return Vector of rewards controller admin addresses for mainnet
     public fun build_rewards_controller_admins_mainnet(): vector<address> {
-        vector[@aave_pool]
+        vector[
+            @0xae4b8e0abd04f47185bb3bfe759cd989a382b23af3b210a65a702798589a2dc1
+        ]
+    }
+
+    /// @notice Build oracle configuration for testnet
+    /// @return SmartTable mapping asset symbols to oracle configurations
+    public fun build_oracle_configs_testnet():
+        SmartTable<string::String, Option<CappedAssetData>> {
+        let oracle_config = smart_table::new<String, Option<CappedAssetData>>();
+        let price_scaling_factor =
+            math_utils::pow(10, (oracle::get_asset_price_decimals() as u256));
+        smart_table::upsert(
+            &mut oracle_config,
+            utf8(APT_ASSET),
+            option::none<CappedAssetData>()
+        );
+        smart_table::upsert(
+            &mut oracle_config,
+            utf8(USDC_ASSET),
+            option::some(
+                CappedAssetData {
+                    type: AdapterType::STABLE,
+                    stable_price_cap: option::some<u256>(
+                        (104 * price_scaling_factor) / 100
+                    ), // 1.04 USD
+                    ratio_decimals: option::none<u8>(),
+                    minimum_snapshot_delay: option::none<u256>(),
+                    snapshot_timestamp: option::none<u256>(),
+                    max_yearly_ratio_growth_percent: option::none<u256>(),
+                    max_ratio_growth_per_second: option::none<u256>(),
+                    snapshot_ratio: option::none<u256>(),
+                    mapped_asset_ratio_multiplier: option::none<address>()
+                }
+            )
+        );
+        smart_table::upsert(
+            &mut oracle_config,
+            utf8(USDT_ASSET),
+            option::some(
+                CappedAssetData {
+                    type: AdapterType::STABLE,
+                    stable_price_cap: option::some<u256>(
+                        (104 * price_scaling_factor) / 100
+                    ), // 1.04 USD
+                    ratio_decimals: option::none<u8>(),
+                    minimum_snapshot_delay: option::none<u256>(),
+                    snapshot_timestamp: option::none<u256>(),
+                    max_yearly_ratio_growth_percent: option::none<u256>(),
+                    max_ratio_growth_per_second: option::none<u256>(),
+                    snapshot_ratio: option::none<u256>(),
+                    mapped_asset_ratio_multiplier: option::none<address>()
+                }
+            )
+        );
+        smart_table::upsert(
+            &mut oracle_config,
+            utf8(SUSDE_ASSET),
+            option::some(
+                CappedAssetData {
+                    type: AdapterType::SUSDE,
+                    stable_price_cap: option::none<u256>(),
+                    ratio_decimals: option::some<u8>(oracle::get_asset_price_decimals()),
+                    minimum_snapshot_delay: option::some<u256>(14 * 24 * 3600), // 14 days in seconds
+                    snapshot_timestamp: option::some<u256>((
+                        timestamp::now_seconds() as u256
+                    )), // in secs - will be overwritten later in set_susde_price_adapter
+                    max_yearly_ratio_growth_percent: option::some<u256>(
+                        (50 * math_utils::get_percentage_factor()) / 100
+                    ), // 50 %
+                    max_ratio_growth_per_second: option::none<u256>(), // Note: gets initialized in the set_susde_price_adapter method
+                    snapshot_ratio: option::some<u256>(0), // must be in the oracle precision - will be overwritten later in set_susde_price_adapter
+                    mapped_asset_ratio_multiplier: option::some<address>(
+                        @0xd5d0d561493ea2b9410f67da804653ae44e793c2423707d4f11edb2e38192050
+                    ) // USDT address
+                }
+            )
+        );
+        oracle_config
+    }
+
+    /// @notice Build oracle configuration for mainnet
+    /// @return SmartTable mapping asset symbols to oracle configurations
+    public fun build_oracle_configs_mainnet():
+        SmartTable<string::String, Option<CappedAssetData>> {
+        let oracle_config = smart_table::new<String, Option<CappedAssetData>>();
+        let price_scaling_factor =
+            math_utils::pow(10, (oracle::get_asset_price_decimals() as u256));
+        smart_table::upsert(
+            &mut oracle_config,
+            utf8(APT_ASSET),
+            option::none<CappedAssetData>()
+        );
+        smart_table::upsert(
+            &mut oracle_config,
+            utf8(USDC_ASSET),
+            option::some(
+                CappedAssetData {
+                    type: AdapterType::STABLE,
+                    stable_price_cap: option::some<u256>(
+                        (104 * price_scaling_factor) / 100
+                    ), // 1.04 USD
+                    ratio_decimals: option::none<u8>(),
+                    minimum_snapshot_delay: option::none<u256>(),
+                    snapshot_timestamp: option::none<u256>(),
+                    max_yearly_ratio_growth_percent: option::none<u256>(),
+                    max_ratio_growth_per_second: option::none<u256>(),
+                    snapshot_ratio: option::none<u256>(),
+                    mapped_asset_ratio_multiplier: option::none<address>()
+                }
+            )
+        );
+        smart_table::upsert(
+            &mut oracle_config,
+            utf8(USDT_ASSET),
+            option::some(
+                CappedAssetData {
+                    type: AdapterType::STABLE,
+                    stable_price_cap: option::some<u256>(
+                        (104 * price_scaling_factor) / 100
+                    ), // 1.04 USD
+                    ratio_decimals: option::none<u8>(),
+                    minimum_snapshot_delay: option::none<u256>(),
+                    snapshot_timestamp: option::none<u256>(),
+                    max_yearly_ratio_growth_percent: option::none<u256>(),
+                    max_ratio_growth_per_second: option::none<u256>(),
+                    snapshot_ratio: option::none<u256>(),
+                    mapped_asset_ratio_multiplier: option::none<address>()
+                }
+            )
+        );
+        smart_table::upsert(
+            &mut oracle_config,
+            utf8(SUSDE_ASSET),
+            option::some(
+                CappedAssetData {
+                    type: AdapterType::SUSDE,
+                    stable_price_cap: option::none<u256>(),
+                    ratio_decimals: option::some<u8>(oracle::get_asset_price_decimals()),
+                    minimum_snapshot_delay: option::some<u256>(14 * 24 * 3600), // 14 days in seconds
+                    snapshot_timestamp: option::some<u256>((
+                        timestamp::now_seconds() as u256
+                    )), // in secs - will be overwritten later in set_susde_price_adapter
+                    max_yearly_ratio_growth_percent: option::some<u256>(
+                        (50 * math_utils::get_percentage_factor()) / 100
+                    ), // 50 %
+                    max_ratio_growth_per_second: option::none<u256>(), // Note: gets initialized in the set_susde_price_adapter method
+                    snapshot_ratio: option::some<u256>(0), // must be in the oracle precision - will be overwritten later in set_susde_price_adapter
+                    mapped_asset_ratio_multiplier: option::some<address>(
+                        @0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b
+                    ) // USDT address
+                }
+            )
+        );
+        oracle_config
     }
 
     /// @notice Build price feed addresses for testnet
@@ -451,9 +755,63 @@ module aave_data::v1_values {
         smart_table::add(
             &mut price_feeds_mainnet,
             string::utf8(SUSDE_ASSET),
-            x"01532c3a7e000332000000000000000000000000000000000000000000000000"
+            x"01f4b4e2cd000332000000000000000000000000000000000000000000000000"
         );
         price_feeds_mainnet
+    }
+
+    /// @notice Build price feed addresses for testnet
+    /// @return SmartTable mapping asset symbols to max price ages (in seconds)
+    public fun build_asset_max_price_age_testnet(): SmartTable<String, u64> {
+        let asset_max_price_ages_testnet = smart_table::new<string::String, u64>();
+        smart_table::add(
+            &mut asset_max_price_ages_testnet,
+            string::utf8(APT_ASSET),
+            10 * 60 // 10 minutes
+        );
+        smart_table::add(
+            &mut asset_max_price_ages_testnet,
+            string::utf8(USDC_ASSET),
+            10 * 60 // 10 minutes
+        );
+        smart_table::add(
+            &mut asset_max_price_ages_testnet,
+            string::utf8(USDT_ASSET),
+            10 * 60 // 10 minutes
+        );
+        smart_table::add(
+            &mut asset_max_price_ages_testnet,
+            string::utf8(SUSDE_ASSET),
+            45 * 60 // 45 minutes
+        );
+        asset_max_price_ages_testnet
+    }
+
+    /// @notice Build price feed addresses for mainnet
+    /// @return SmartTable mapping asset symbols to max price ages (in seconds)
+    public fun build_asset_max_price_age_mainnet(): SmartTable<String, u64> {
+        let asset_max_price_ages_mainnet = smart_table::new<string::String, u64>();
+        smart_table::add(
+            &mut asset_max_price_ages_mainnet,
+            string::utf8(APT_ASSET),
+            10 * 60 // 10 minutes
+        );
+        smart_table::add(
+            &mut asset_max_price_ages_mainnet,
+            string::utf8(USDC_ASSET),
+            10 * 60 // 10 minutes
+        );
+        smart_table::add(
+            &mut asset_max_price_ages_mainnet,
+            string::utf8(USDT_ASSET),
+            10 * 60 // 10 minutes
+        );
+        smart_table::add(
+            &mut asset_max_price_ages_mainnet,
+            string::utf8(SUSDE_ASSET),
+            45 * 60 // 45 minutes
+        );
+        asset_max_price_ages_mainnet
     }
 
     /// @notice Build underlying asset addresses for testnet
@@ -721,10 +1079,10 @@ module aave_data::v1_values {
             &mut interest_rate_config,
             utf8(SUSDE_ASSET),
             InterestRateStrategy {
-                optimal_usage_ratio: ((90 * math_utils::get_percentage_factor()) / 100), // TODO: need correct value
+                optimal_usage_ratio: ((90 * math_utils::get_percentage_factor()) / 100),
                 base_variable_borrow_rate: 0, // TODO: need correct value
-                variable_rate_slope1: ((6 * math_utils::get_percentage_factor()) / 100), // TODO: need correct value
-                variable_rate_slope2: ((40 * math_utils::get_percentage_factor()) / 100) // TODO: need correct value
+                variable_rate_slope1: ((6 * math_utils::get_percentage_factor()) / 100),
+                variable_rate_slope2: ((40 * math_utils::get_percentage_factor()) / 100)
             }
         );
         interest_rate_config
@@ -769,10 +1127,10 @@ module aave_data::v1_values {
             &mut interest_rate_config,
             utf8(SUSDE_ASSET),
             InterestRateStrategy {
-                optimal_usage_ratio: ((90 * math_utils::get_percentage_factor()) / 100), // TODO: need correct value
+                optimal_usage_ratio: ((90 * math_utils::get_percentage_factor()) / 100),
                 base_variable_borrow_rate: 0, // TODO: need correct value
-                variable_rate_slope1: ((6 * math_utils::get_percentage_factor()) / 100), // TODO: need correct value
-                variable_rate_slope2: ((40 * math_utils::get_percentage_factor()) / 100) // TODO: need correct value
+                variable_rate_slope1: ((6 * math_utils::get_percentage_factor()) / 100),
+                variable_rate_slope2: ((40 * math_utils::get_percentage_factor()) / 100)
             }
         );
         interest_rate_config

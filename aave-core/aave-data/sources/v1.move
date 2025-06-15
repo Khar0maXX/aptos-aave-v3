@@ -9,6 +9,7 @@ module aave_data::v1 {
     use std::string::{String, utf8};
     use std::vector;
     use aptos_std::smart_table;
+    use std::option::Option;
     // locals
     use aave_config::error_config;
 
@@ -29,6 +30,10 @@ module aave_data::v1 {
         price_feeds_testnet: smart_table::SmartTable<string::String, vector<u8>>,
         /// @dev Price feed addresses for mainnet assets
         price_feeds_mainnet: smart_table::SmartTable<string::String, vector<u8>>,
+        /// @dev Max price age for testnet assets
+        asset_max_price_age_testnet: smart_table::SmartTable<string::String, u64>,
+        /// @dev Max price age for mainnet assets
+        asset_max_price_age_mainnet: smart_table::SmartTable<string::String, u64>,
         /// @dev Underlying asset addresses for testnet
         underlying_assets_testnet: smart_table::SmartTable<string::String, address>,
         /// @dev Underlying asset addresses for mainnet
@@ -45,6 +50,10 @@ module aave_data::v1 {
         emodes_testnet: smart_table::SmartTable<u256, aave_data::v1_values::EmodeConfig>,
         /// @dev E-modes configuration for mainnet
         emodes_mainnet: smart_table::SmartTable<u256, aave_data::v1_values::EmodeConfig>,
+        /// @dev Oracle configuration for testnet
+        oracle_configs_testnet: smart_table::SmartTable<string::String, Option<aave_data::v1_values::CappedAssetData>>,
+        /// @dev Oracle configuration for mainnet
+        oracle_configs_mainnet: smart_table::SmartTable<string::String, Option<aave_data::v1_values::CappedAssetData>>,
 
         /// @dev Pool admins addresses for testnet
         pool_admins_testnet: vector<address>,
@@ -98,6 +107,8 @@ module aave_data::v1 {
             Data {
                 price_feeds_testnet: aave_data::v1_values::build_price_feeds_testnet(),
                 price_feeds_mainnet: aave_data::v1_values::build_price_feeds_mainnet(),
+                asset_max_price_age_testnet: aave_data::v1_values::build_asset_max_price_age_testnet(),
+                asset_max_price_age_mainnet: aave_data::v1_values::build_asset_max_price_age_mainnet(),
                 underlying_assets_testnet: aave_data::v1_values::build_underlying_assets_testnet(),
                 underlying_assets_mainnet: aave_data::v1_values::build_underlying_assets_mainnet(),
                 reserves_config_testnet: aave_data::v1_values::build_reserve_config_testnet(),
@@ -123,7 +134,9 @@ module aave_data::v1 {
                 flash_borrower_admins_mainnet: aave_data::v1_values::build_flash_borrower_admins_mainnet(),
                 emission_admins_mainnet: aave_data::v1_values::build_emission_admins_mainnet(),
                 admin_controlled_ecosystem_reserve_funds_admins_mainnet: aave_data::v1_values::build_admin_controlled_ecosystem_reserve_funds_admins_mainnet(),
-                rewards_controller_admins_mainnet: aave_data::v1_values::build_rewards_controller_admins_mainnet()
+                rewards_controller_admins_mainnet: aave_data::v1_values::build_rewards_controller_admins_mainnet(),
+                oracle_configs_testnet: aave_data::v1_values::build_oracle_configs_testnet(),
+                oracle_configs_mainnet: aave_data::v1_values::build_oracle_configs_mainnet()
             }
         );
     }
@@ -169,26 +182,6 @@ module aave_data::v1 {
         symbol
     }
 
-    /// @notice Gets the list of asset symbols for testnet
-    /// @return Vector of asset symbols for testnet
-    public inline fun get_asset_symbols_testnet(): &vector<string::String> acquires Data {
-        &smart_table::keys(&borrow_global<Data>(@aave_data).price_feeds_testnet)
-    }
-
-    /// @notice Gets the list of asset symbols for mainnet
-    /// @return Vector of asset symbols for mainnet
-    public inline fun get_asset_symbols_mainnet(): &vector<string::String> acquires Data {
-        &smart_table::keys(&borrow_global<Data>(@aave_data).price_feeds_mainnet)
-    }
-
-    // Public functions - Price feeds access
-    /// @notice Gets the price feed mapping for testnet
-    /// @return SmartTable mapping asset symbols to price feed addresses
-    public inline fun get_price_feeds_tesnet():
-        &smart_table::SmartTable<string::String, vector<u8>> acquires Data {
-        &borrow_global<Data>(@aave_data).price_feeds_testnet
-    }
-
     /// @notice Gets the price feeds for testnet in normalized format (keys and values as separate vectors)
     /// @return Tuple of (asset symbols, price feed addresses)
     public fun get_price_feeds_testnet_normalized(): (vector<String>, vector<vector<u8>>) acquires Data {
@@ -204,13 +197,6 @@ module aave_data::v1 {
             i = i + 1;
         };
         (keys, views)
-    }
-
-    /// @notice Gets the price feed mapping for mainnet
-    /// @return SmartTable mapping asset symbols to price feed addresses
-    public inline fun get_price_feeds_mainnet():
-        &smart_table::SmartTable<string::String, vector<u8>> acquires Data {
-        &borrow_global<Data>(@aave_data).price_feeds_mainnet
     }
 
     /// @notice Gets the price feeds for mainnet in normalized format (keys and values as separate vectors)
@@ -230,14 +216,6 @@ module aave_data::v1 {
         (keys, views)
     }
 
-    // Public functions - Underlying assets access
-    /// @notice Gets the underlying assets mapping for testnet
-    /// @return SmartTable mapping asset symbols to underlying asset addresses
-    public inline fun get_underlying_assets_testnet():
-        &smart_table::SmartTable<string::String, address> acquires Data {
-        &borrow_global<Data>(@aave_data).underlying_assets_testnet
-    }
-
     /// @notice Gets the underlying assets for testnet in normalized format (keys and values as separate vectors)
     /// @return Tuple of (asset symbols, underlying asset addresses)
     public fun get_underlying_assets_testnet_normalized(): (vector<String>, vector<address>) acquires Data {
@@ -255,13 +233,6 @@ module aave_data::v1 {
         (keys, views)
     }
 
-    /// @notice Gets the underlying assets mapping for mainnet
-    /// @return SmartTable mapping asset symbols to underlying asset addresses
-    public inline fun get_underlying_assets_mainnet():
-        &smart_table::SmartTable<string::String, address> acquires Data {
-        &borrow_global<Data>(@aave_data).underlying_assets_mainnet
-    }
-
     /// @notice Gets the underlying assets for mainnet in normalized format (keys and values as separate vectors)
     /// @return Tuple of (asset symbols, underlying asset addresses)
     public fun get_underlying_assets_mainnet_normalized(): (vector<String>, vector<address>) acquires Data {
@@ -277,14 +248,6 @@ module aave_data::v1 {
             i = i + 1;
         };
         (keys, views)
-    }
-
-    // Public functions - Reserve configs access
-    /// @notice Gets the reserve configurations mapping for testnet
-    /// @return SmartTable mapping asset symbols to reserve configurations
-    public inline fun get_reserves_config_testnet():
-        &smart_table::SmartTable<string::String, aave_data::v1_values::ReserveConfig> acquires Data {
-        &borrow_global<Data>(@aave_data).reserves_config_testnet
     }
 
     /// @notice Gets the reserve configurations for testnet in normalized format (keys and values as separate vectors)
@@ -306,13 +269,6 @@ module aave_data::v1 {
         (keys, views)
     }
 
-    /// @notice Gets the reserve configurations mapping for mainnet
-    /// @return SmartTable mapping asset symbols to reserve configurations
-    public inline fun get_reserves_config_mainnet():
-        &smart_table::SmartTable<string::String, aave_data::v1_values::ReserveConfig> acquires Data {
-        &borrow_global<Data>(@aave_data).reserves_config_mainnet
-    }
-
     /// @notice Gets the reserve configurations for mainnet in normalized format (keys and values as separate vectors)
     /// @return Tuple of (asset symbols, reserve configurations)
     public fun get_reserves_config_mainnet_normalized(): (
@@ -330,14 +286,6 @@ module aave_data::v1 {
             i = i + 1;
         };
         (keys, views)
-    }
-
-    // Public functions - Interest rate strategies access
-    /// @notice Gets the interest rate strategies mapping for testnet
-    /// @return SmartTable mapping asset symbols to interest rate strategies
-    public inline fun get_interest_rate_strategy_testnet():
-        &smart_table::SmartTable<string::String, aave_data::v1_values::InterestRateStrategy> acquires Data {
-        &borrow_global<Data>(@aave_data).interest_rate_strategy_testnet
     }
 
     /// @notice Gets the interest rate strategies for testnet in normalized format (keys and values as separate vectors)
@@ -359,13 +307,6 @@ module aave_data::v1 {
         (keys, views)
     }
 
-    /// @notice Gets the interest rate strategies mapping for mainnet
-    /// @return SmartTable mapping asset symbols to interest rate strategies
-    public inline fun get_interest_rate_strategy_mainnet():
-        &smart_table::SmartTable<string::String, aave_data::v1_values::InterestRateStrategy> acquires Data {
-        &borrow_global<Data>(@aave_data).interest_rate_strategy_mainnet
-    }
-
     /// @notice Gets the interest rate strategies for mainnet in normalized format (keys and values as separate vectors)
     /// @return Tuple of (asset symbols, interest rate strategies)
     public fun get_interest_rate_strategy_mainnet_normalized(): (
@@ -383,14 +324,6 @@ module aave_data::v1 {
             i = i + 1;
         };
         (keys, views)
-    }
-
-    // Public functions - E-modes access
-    /// @notice Gets the E-modes mapping for mainnet
-    /// @return SmartTable mapping E-mode IDs to E-mode configurations
-    public inline fun get_emodes_mainnet():
-        &smart_table::SmartTable<u256, aave_data::v1_values::EmodeConfig> acquires Data {
-        &borrow_global<Data>(@aave_data).emodes_mainnet
     }
 
     /// @notice Gets the E-modes for mainnet in normalized format (keys and values as separate vectors)
@@ -412,13 +345,6 @@ module aave_data::v1 {
         (keys, configs)
     }
 
-    /// @notice Gets the E-modes mapping for testnet
-    /// @return SmartTable mapping E-mode IDs to E-mode configurations
-    public inline fun get_emodes_testnet():
-        &smart_table::SmartTable<u256, aave_data::v1_values::EmodeConfig> acquires Data {
-        &borrow_global<Data>(@aave_data).emodes_testnet
-    }
-
     /// @notice Gets the E-modes for testnet in normalized format (keys and values as separate vectors)
     /// @return Tuple of (E-mode IDs, E-mode configurations)
     public fun get_emode_testnet_normalized(): (
@@ -436,6 +362,80 @@ module aave_data::v1 {
             i = i + 1;
         };
         (keys, configs)
+    }
+
+    /// @notice Gets the asset max price ages for testnet in normalized format (keys and values as separate vectors)
+    /// @return Tuple of (asset name, max_price_age)
+    public fun get_asset_max_price_ages_testnet_normalized(): (vector<String>, vector<u64>) acquires Data {
+        let asset_max_price_age =
+            &borrow_global<Data>(@aave_data).asset_max_price_age_testnet;
+        let keys = smart_table::keys(asset_max_price_age);
+        let asset_max_price_ages = vector::empty<u64>();
+
+        let i = 0;
+        while (i < vector::length(&keys)) {
+            let key = *vector::borrow(&keys, i);
+            let config = *smart_table::borrow(asset_max_price_age, key);
+            vector::push_back(&mut asset_max_price_ages, config);
+            i = i + 1;
+        };
+        (keys, asset_max_price_ages)
+    }
+
+    /// @notice Gets the asset max price ages for mainnet in normalized format (keys and values as separate vectors)
+    /// @return Tuple of (asset name, max_price_age)
+    public fun get_asset_max_price_ages_mainnet_normalized(): (vector<String>, vector<u64>) acquires Data {
+        let asset_max_price_age =
+            &borrow_global<Data>(@aave_data).asset_max_price_age_mainnet;
+        let keys = smart_table::keys(asset_max_price_age);
+        let asset_max_price_ages = vector::empty<u64>();
+
+        let i = 0;
+        while (i < vector::length(&keys)) {
+            let key = *vector::borrow(&keys, i);
+            let config = *smart_table::borrow(asset_max_price_age, key);
+            vector::push_back(&mut asset_max_price_ages, config);
+            i = i + 1;
+        };
+        (keys, asset_max_price_ages)
+    }
+
+    /// @notice Gets the oracle configs for the assets on testnet in normalized format (keys and values as separate vectors)
+    /// @return Tuple of (asset symbols, asset oracle configs)
+    public fun get_oracle_configs_testnet_normalized(): (
+        vector<String>, vector<Option<aave_data::v1_values::CappedAssetData>>
+    ) acquires Data {
+        let table = &borrow_global<Data>(@aave_data).oracle_configs_testnet;
+        let keys = smart_table::keys(table);
+        let views = vector::empty<Option<aave_data::v1_values::CappedAssetData>>();
+
+        let i = 0;
+        while (i < vector::length(&keys)) {
+            let key = *vector::borrow(&keys, i);
+            let val = *smart_table::borrow(table, key);
+            vector::push_back(&mut views, val);
+            i = i + 1;
+        };
+        (keys, views)
+    }
+
+    /// @notice Gets the oracle configs for the assets on mainnet in normalized format (keys and values as separate vectors)
+    /// @return Tuple of (asset symbols, asset oracle configs)
+    public fun get_oracle_configs_mainnet_normalized(): (
+        vector<String>, vector<Option<aave_data::v1_values::CappedAssetData>>
+    ) acquires Data {
+        let table = &borrow_global<Data>(@aave_data).oracle_configs_mainnet;
+        let keys = smart_table::keys(table);
+        let views = vector::empty<Option<aave_data::v1_values::CappedAssetData>>();
+
+        let i = 0;
+        while (i < vector::length(&keys)) {
+            let key = *vector::borrow(&keys, i);
+            let val = *smart_table::borrow(table, key);
+            vector::push_back(&mut views, val);
+            i = i + 1;
+        };
+        (keys, views)
     }
 
     /// @notice Gets all acl accounts for testnet

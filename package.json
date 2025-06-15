@@ -1,6 +1,6 @@
 {
   "name": "aave-v3",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -13,7 +13,7 @@
     "@commitlint/config-conventional": "^19.8.0",
     "commitlint": "^19.8.0",
     "markdownlint": "^0.38.0",
-    "markdownlint-cli": "^0.44.0",
+    "markdownlint-cli": "^0.45.0",
     "prettier": "^3.5.3",
     "prettier-plugin-sh": "^0.17.2",
     "prettier-plugin-toml": "^2.0.4"

@@ -163,7 +163,7 @@ module aave_pool::coin_migrator_tests {
             transfer_amount
         );
 
-        // assert alice has both 99 coins and 1 fa
+        // assert alice has both 99 coins and 9 fa
         assert!(
             coin::balance<GenericAptosCoin>(signer::address_of(alice))
                 == alice_init_balance - transfer_amount,

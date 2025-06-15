@@ -1,0 +1,63 @@
+site_name: Aave Aptos Docs
+
+theme:
+  name: readthedocs
+
+nav:
+  - Home: index.md
+  - Aave Acl:
+      - Manage: aave-acl/acl_manage.md
+  - Aave Config:
+      - Error Config: aave-config/error_config.md
+      - Helper: aave-config/helper.md
+      - Reserve Config: aave-config/reserve_config.md
+      - Revision: aave-config/revision.md
+      - User Config: aave-config/user_config.md
+  - Aave Large Packages:
+      - Large Packages: aave-large-packages/large_packages.md
+  - Aave Math:
+      - Math Utils: aave-math/math_utils.md
+      - Wad Ray Utils: aave-math/wad_ray_math.md
+  - Aave Mock Underlyings:
+      - Mock Underlyings Token: aave-mock-underlyings/mock_underlying_token_factory.md
+  - Aave Oracle:
+      - Oracle: aave-oracle/oracle.md
+  - Aave Pool:
+      - A Token Factory: aave-pool/a_token_factory.md
+      - Acl Manage: aave-pool/acl_manage.md
+      - Borrow Logic: aave-pool/borrow_logic.md
+      - Coin Migrator: aave-pool/coin_migrator.md
+      - Collector: aave-pool/collector.md
+      - Default IR Strategy: aave-pool/default_reserve_interest_rate_strategy.md
+      - Emission Manager: aave-pool/emission_manager.md
+      - Emode Logic: aave-pool/emode_logic.md
+      - Error Config: aave-pool/error_config.md
+      - Events: aave-pool/events.md
+      - Flashloan Logic: aave-pool/flashloan_logic.md
+      - Fungible Asset Manager: aave-pool/fungible_asset_manager.md
+      - Generic Logic: aave-pool/generic_logic.md
+      - Helper: aave-pool/helper.md
+      - Isolation Mode Logic: aave-pool/isolation_mode_logic.md
+      - Liquidation Logic: aave-pool/liquidation_logic.md
+      - Math Utils: aave-pool/math_utils.md
+      - Oracle: aave-pool/oracle.md
+      - Pool: aave-pool/pool.md
+      - Pool Configurator: aave-pool/pool_configurator.md
+      - Pool Data Provider: aave-pool/pool_data_provider.md
+      - Pool Fee Manager: aave-pool/pool_fee_manager.md
+      - Pool Logic: aave-pool/pool_logic.md
+      - Pool Token Logic: aave-pool/pool_token_logic.md
+      - Reserve Config: aave-pool/reserve_config.md
+      - Revision: aave-pool/revision.md
+      - Rewards Controller: aave-pool/rewards_controller.md
+      - Rewards Distributor: aave-pool/rewards_distributor.md
+      - Supply Logic: aave-pool/supply_logic.md
+      - Token Base: aave-pool/token_base.md
+      - Transfer Strategy: aave-pool/transfer_strategy.md
+      - UI Incentive Data Provider V3: aave-pool/ui_incentive_data_provider_v3.md
+      - UI Pool Data Provider V3: aave-pool/ui_pool_data_provider_v3.md
+      - User Config: aave-pool/user_config.md
+      - User Logic: aave-pool/user_logic.md
+      - Validation Logic: aave-pool/validation_logic.md
+      - Variable Debt Token Factory: aave-pool/variable_debt_token_factory.md
+      - Wad Ray Math: aave-pool/wad_ray_math.md

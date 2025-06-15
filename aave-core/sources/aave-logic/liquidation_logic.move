@@ -307,7 +307,7 @@ module aave_pool::liquidation_logic {
     /// @param debt_asset The debt asset address
     /// @param user_reserve_debt The user reserver debt amount
     /// @param actual_debt_to_liquidate The actual debt to liquidate
-    /// @param has_no_collateral_left The flag representing, will user will have no collateral left after liquidation
+    /// @param has_no_collateral_left The flag representing, whether the user will have no collateral left after liquidation
     fun burn_debt_tokens(
         debt_reserve_cache: &mut ReserveCache,
         debt_reserve_data: Object<ReserveData>,

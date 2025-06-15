@@ -326,6 +326,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u1_token_address, underlying_u1_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 100, underlying_u1_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u1_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // deposit 500 U_1 tokens to the pool
         supply_logic::supply(
@@ -356,6 +361,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u2_token_address, underlying_u2_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 100, underlying_u2_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u2_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // supply 500 U_2 tokens to the pool
         supply_logic::supply(
@@ -478,6 +488,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u1_token_address, underlying_u1_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 10, underlying_u1_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u1_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // deposit 500 U_1 tokens to the pool
         supply_logic::supply(
@@ -508,6 +523,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u2_token_address, underlying_u2_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 10, underlying_u2_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u2_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // supply 500 U_2 tokens to the pool
         supply_logic::supply(
@@ -659,6 +679,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u1_token_address, underlying_u1_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 10, underlying_u1_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u1_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // deposit 500 U_1 tokens to the pool
         supply_logic::supply(
@@ -689,6 +714,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u2_token_address, underlying_u2_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 10, underlying_u2_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u2_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // supply 500 U_2 tokens to the pool
         supply_logic::supply(
@@ -736,6 +766,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool,
             math_utils::percent_mul(10, 118000),
             underlying_u1_token_feed_id
+        );
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u1_token_address,
+            oracle::get_test_max_price_age_secs()
         );
 
         // set collateral liquidation threshold to 0
@@ -839,6 +874,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u1_token_address, underlying_u1_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 10, underlying_u1_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u1_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // deposit 500 U_1 tokens to the pool
         supply_logic::supply(
@@ -869,6 +909,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u2_token_address, underlying_u2_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 10, underlying_u2_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u2_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // supply 500 U_2 tokens to the pool
         supply_logic::supply(
@@ -1036,6 +1081,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u1_token_address, underlying_u1_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 10, underlying_u1_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u1_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // deposit 500 U_1 tokens to the pool
         supply_logic::supply(
@@ -1066,6 +1116,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u2_token_address, underlying_u2_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 10, underlying_u2_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u2_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // supply 1000 U_2 tokens to the pool
         supply_logic::supply(
@@ -1194,6 +1249,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u1_token_address, underlying_u1_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 10, underlying_u1_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u1_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // deposit 1000 U_1 tokens to the pool
         supply_logic::supply(
@@ -1224,6 +1284,11 @@ module aave_pool::liquidation_validation_tests {
             aave_pool, underlying_u2_token_address, underlying_u2_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_pool, 10, underlying_u2_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_pool,
+            underlying_u2_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // supply 1000 U_2 tokens to the pool
         supply_logic::supply(
@@ -1366,6 +1431,11 @@ module aave_pool::liquidation_validation_tests {
             aave_oracle, underlying_u1_token_address, underlying_u1_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_oracle, 100, underlying_u1_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_oracle,
+            underlying_u1_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // depositor deposits 1000 U_1 to the pool
         supply_logic::supply(
@@ -1397,6 +1467,11 @@ module aave_pool::liquidation_validation_tests {
             aave_oracle, underlying_u2_token_address, underlying_u2_token_feed_id
         );
         oracle::set_chainlink_mock_price(aave_oracle, 100, underlying_u2_token_feed_id);
+        oracle::set_max_asset_price_age(
+            aave_oracle,
+            underlying_u2_token_address,
+            oracle::get_test_max_price_age_secs()
+        );
 
         // borrower deposits 1000 U_2 to the pool
         supply_logic::supply(
@@ -1443,6 +1518,11 @@ module aave_pool::liquidation_validation_tests {
             aave_oracle,
             math_utils::percent_mul(u1_price, 11800000),
             underlying_u1_token_feed_id
+        );
+        oracle::set_max_asset_price_age(
+            aave_oracle,
+            underlying_u1_token_address,
+            oracle::get_test_max_price_age_secs()
         );
 
         let (_, _, _, _, _, health_factor) =

@@ -619,7 +619,7 @@ module aave_pool::pool_configurator {
         let pending_ltv_set = 0;
         let ltv_set = 0;
         if (freeze) {
-            let pending_ltv_set = reserve_config::get_ltv(&reserve_config_map);
+            pending_ltv_set = reserve_config::get_ltv(&reserve_config_map);
             smart_table::upsert(&mut internal_data.pending_ltv, asset, pending_ltv_set);
             reserve_config::set_ltv(&mut reserve_config_map, 0);
         } else {

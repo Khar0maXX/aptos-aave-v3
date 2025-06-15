@@ -75,7 +75,7 @@ module aave_config::error_tests {
         get_ereserve_liquidity_not_zero,
         get_ereserve_paused,
         get_ereserves_storage_count_mismatch,
-        get_esigner_and_on_behalf_of_no_same,
+        get_esigner_and_on_behalf_of_not_same,
         get_esiloed_borrowing_violation,
         get_especified_currency_not_borrowed_by_user,
         get_esupply_cap_exceeded,
@@ -86,9 +86,9 @@ module aave_config::error_tests {
         get_euser_not_listed,
         get_evariable_debt_supply_not_zero,
         get_ezero_address_not_valid,
-        get_flashloan_payer_not_receiver,
+        get_eflashloan_payer_not_receiver,
         get_enot_acl_owner,
-        get_erole_missmatch,
+        get_erole_mismatch,
         get_erole_can_only_renounce_self,
         get_eroles_not_initialized,
         get_eoverflow,
@@ -96,16 +96,16 @@ module aave_config::error_tests {
         get_eoracle_not_admin,
         get_easset_already_exists,
         get_eno_asset_feed,
-        get_eoralce_benchmark_length_mistmatch,
+        get_eoralce_benchmark_length_mismatch,
         get_enegative_oracle_price,
         get_ezero_oracle_price,
         get_ecaller_not_pool_or_asset_listing_admin,
-        get_erequested_feed_ids_assets_mistmatch,
+        get_erequested_feed_ids_assets_mismatch,
         get_edifferent_caller_on_behalf_of,
         get_eempty_feed_id,
         get_eno_asset_custom_price,
         get_ezero_asset_custom_price,
-        get_erequested_custom_prices_assets_mistmatch,
+        get_erequested_custom_prices_assets_mismatch,
         get_easset_not_registered_with_oracle,
         get_enot_rate_owner,
         get_edefault_interest_rate_strategy_not_initialized,
@@ -156,8 +156,20 @@ module aave_config::error_tests {
         get_emin_asset_decimal_places,
         get_estore_for_asset_not_exist,
         get_easset_no_price_cap,
+        get_estale_oracle_price,
+        get_eoracle_price_timestamp_in_future,
+        get_ezero_oracle_max_asset_price_age,
         get_einvalid_max_apt_fee,
-        get_einvalid_emission_rate
+        get_einvalid_emission_rate,
+        get_ezero_snapshot_ratio,
+        get_einvalid_ratio_timestamp,
+        get_esnapshot_overflow,
+        get_ezero_ratio_decimals,
+        get_emismatch_adapter_type,
+        get_einvalid_growth_rate,
+        get_einvalid_snapshot_delay,
+        get_einvalid_snapshot_ratio,
+        get_einvalid_snapshot_timestamp
     };
 
     const TEST_SUCCESS: u64 = 1;
@@ -173,8 +185,6 @@ module aave_config::error_tests {
     const ECALLER_NOT_RISK_OR_POOL_ADMIN: u64 = 4;
     /// The caller of the function is not an asset listing or pool admin
     const ECALLER_NOT_ASSET_LISTING_OR_POOL_ADMIN: u64 = 5;
-    /// The caller of the function is not a bridge
-    const ECALLER_NOT_BRIDGE: u64 = 6;
     /// Pool addresses provider is not registered
     const EADDRESSES_PROVIDER_NOT_REGISTERED: u64 = 7;
     /// Invalid id for the pool addresses provider
@@ -355,7 +365,7 @@ module aave_config::error_tests {
     /// Account is not the acl's owner.
     const ENOT_ACL_OWNER: u64 = 1001;
     /// Account is missing role.
-    const EROLE_MISSMATCH: u64 = 1002;
+    const EROLE_MISMATCH: u64 = 1002;
     /// can only renounce roles for self
     const EROLE_CAN_ONLY_RENOUNCE_SELF: u64 = 1003;
     /// roles not initialized
@@ -379,7 +389,7 @@ module aave_config::error_tests {
     /// No asset feed for the given asset
     const E_NO_ASSET_FEED: u64 = 1203;
     /// Returned batch of prices equals the requested assets
-    const E_ORACLE_BENCHMARK_LENGHT_MISMATCH: u64 = 1204;
+    const E_ORACLE_BENCHMARK_LENGTH_MISMATCH: u64 = 1204;
     /// Returned oracle price is negative
     const E_NEGATIVE_ORACLE_PRICE: u64 = 1205;
     /// Returned oracle price is zero
@@ -404,6 +414,30 @@ module aave_config::error_tests {
     const E_CAP_LOWER_THAN_ACTUAL_PRICE: u64 = 1215;
     /// The asset does not have a price cap
     const E_ASSET_NO_PRICE_CAP: u64 = 1216;
+    /// The oracle price is stale
+    const ESTALE_ORACLE_PRICE: u64 = 1217;
+    /// The oracle price timestamp is in the future
+    const EORACLE_PRICE_TIMESTAMP_IN_FUTURE: u64 = 1218;
+    /// The max asset price age of the asset
+    const E_ZERO_ORACLE_MAX_ASSET_PRICE_AGE: u64 = 1219;
+    /// The snapshot ratio is zero
+    const E_ZERO_SNAPSHOT_RATIO: u64 = 1220;
+    /// The timestamp ratio is invalid
+    const E_INVALID_RATIO_TIMESTAMP: u64 = 1221;
+    /// The snapshot may overflow very soon
+    const E_SNAPSHOT_OVERFLOW: u64 = 1222;
+    /// The ratio decimals is zero
+    const E_ZERO_RATIO_DECIMALS: u64 = 1223;
+    /// The adapter type that is being updated is not the one stored
+    const E_MISMATCH_ADAPTER_TYPE: u64 = 1224;
+    /// The growth rate is invalid
+    const E_INVALID_GROWTH_RATE: u64 = 1225;
+    /// The snapshot delay is invalid
+    const E_INVALID_SNAPSHOT_DELAY: u64 = 1226;
+    /// The snapshot ratio is invalid
+    const E_INVALID_SNAPSHOT_RATIO: u64 = 1227;
+    /// The snapshot timestamp is invalid
+    const E_INVALID_SNAPSHOT_TIMESTAMP: u64 = 1228;
 
     // aave_rate module error code range from 1301 to 1400.
 
@@ -423,7 +457,7 @@ module aave_config::error_tests {
     /// Mismatch of reserves count in storage
     const ERESERVES_STORAGE_COUNT_MISMATCH: u64 = 1403;
     /// The person who signed must be consistent with on_behalf_of
-    const ESIGNER_AND_ON_BEHALF_OF_NO_SAME: u64 = 1404;
+    const ESIGNER_AND_ON_BEHALF_OF_NOT_SAME: u64 = 1404;
     /// Account does not exist
     const EACCOUNT_DOES_NOT_EXIST: u64 = 1405;
     /// Flashloan payer is different from the flashloan receiver
@@ -467,7 +501,7 @@ module aave_config::error_tests {
     /// Incentives controller mismatch
     const EINCENTIVES_CONTROLLER_MISMATCH: u64 = 3002;
     /// Claimer is not authorized to make the reward claim
-    const EUNAHTHORIZED_CLAIMER: u64 = 3003;
+    const EUNAUTHORIZED_CLAIMER: u64 = 3003;
     /// Reward index overflow
     const EREWARD_INDEX_OVERFLOW: u64 = 3004;
     /// Invalid config data used in rewards controller / distributor
@@ -508,7 +542,7 @@ module aave_config::error_tests {
     const EINVALID_REWARDS_CONTROLLER_ADDRESS: u64 = 3022;
     /// Reward does not exist
     const EREWARD_NOT_EXIST: u64 = 3023;
-    /// Secondrary fungible store does not exist for the asset
+    /// Secondary fungible store does not exist for the asset
     const ESTORE_FOR_ASSET_NOT_EXIST: u64 = 3024;
     /// The expect maximum emission rate is invalid
     const EINVALID_EMISSION_RATE: u64 = 3025;
@@ -1114,8 +1148,8 @@ module aave_config::error_tests {
     }
 
     #[test]
-    fun test_get_erole_missmatch() {
-        assert!(get_erole_missmatch() == EROLE_MISSMATCH, TEST_SUCCESS);
+    fun test_get_erole_mismatch() {
+        assert!(get_erole_mismatch() == EROLE_MISMATCH, TEST_SUCCESS);
     }
 
     #[test]
@@ -1157,10 +1191,10 @@ module aave_config::error_tests {
     }
 
     #[test]
-    fun test_get_eoralce_benchmark_length_mistmatch() {
+    fun test_get_eoralce_benchmark_length_mismatch() {
         assert!(
-            get_eoralce_benchmark_length_mistmatch()
-                == E_ORACLE_BENCHMARK_LENGHT_MISMATCH,
+            get_eoralce_benchmark_length_mismatch()
+                == E_ORACLE_BENCHMARK_LENGTH_MISMATCH,
             TEST_SUCCESS
         );
     }
@@ -1185,9 +1219,9 @@ module aave_config::error_tests {
     }
 
     #[test]
-    fun test_get_erequested_feed_ids_assets_mistmatch() {
+    fun test_get_erequested_feed_ids_assets_mismatch() {
         assert!(
-            get_erequested_feed_ids_assets_mistmatch()
+            get_erequested_feed_ids_assets_mismatch()
                 == E_REQUESTED_FEED_IDS_ASSETS_MISMATCH,
             TEST_SUCCESS
         );
@@ -1217,9 +1251,9 @@ module aave_config::error_tests {
     }
 
     #[test]
-    fun test_get_erequested_custom_prices_assets_mistmatch() {
+    fun test_get_erequested_custom_prices_assets_mismatch() {
         assert!(
-            get_erequested_custom_prices_assets_mistmatch()
+            get_erequested_custom_prices_assets_mismatch()
                 == E_REQUESTED_CUSTOM_PRICES_ASSETS_MISMATCH,
             TEST_SUCCESS
         );
@@ -1243,8 +1277,80 @@ module aave_config::error_tests {
     }
 
     #[test]
+    public fun test_get_ezero_snapshot_ratio() {
+        assert!(get_ezero_snapshot_ratio() == E_ZERO_SNAPSHOT_RATIO, TEST_SUCCESS);
+    }
+
+    #[test]
+    public fun test_get_ezero_ratio_decimals() {
+        assert!(get_ezero_ratio_decimals() == E_ZERO_RATIO_DECIMALS, TEST_SUCCESS);
+    }
+
+    #[test]
+    public fun test_get_emismatch_adapter_type() {
+        assert!(get_emismatch_adapter_type() == E_MISMATCH_ADAPTER_TYPE, TEST_SUCCESS);
+    }
+
+    #[test]
+    public fun test_get_einvalid_growth_rate() {
+        assert!(get_einvalid_growth_rate() == E_INVALID_GROWTH_RATE, TEST_SUCCESS);
+    }
+
+    #[test]
+    public fun test_get_einvalid_snapshot_delay() {
+        assert!(get_einvalid_snapshot_delay() == E_INVALID_SNAPSHOT_DELAY, TEST_SUCCESS);
+    }
+
+    #[test]
+    public fun test_get_einvalid_snapshot_ratio() {
+        assert!(get_einvalid_snapshot_ratio() == E_INVALID_SNAPSHOT_RATIO, TEST_SUCCESS);
+    }
+
+    #[test]
+    public fun test_get_einvalid_snapshot_timestamp() {
+        assert!(
+            get_einvalid_snapshot_timestamp() == E_INVALID_SNAPSHOT_TIMESTAMP,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    public fun test_get_einvalid_ratio_timestamp() {
+        assert!(
+            get_einvalid_ratio_timestamp() == E_INVALID_RATIO_TIMESTAMP, TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    public fun test_get_esnapshot_overflow() {
+        assert!(get_esnapshot_overflow() == E_SNAPSHOT_OVERFLOW, TEST_SUCCESS);
+    }
+
+    #[test]
     fun test_get_easset_no_price_cap() {
         assert!(get_easset_no_price_cap() == E_ASSET_NO_PRICE_CAP, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_estale_oracle_price() {
+        assert!(get_estale_oracle_price() == ESTALE_ORACLE_PRICE, TEST_SUCCESS);
+    }
+
+    #[test]
+    fun test_get_eoracle_price_timestamp_in_future() {
+        assert!(
+            get_eoracle_price_timestamp_in_future()
+                == EORACLE_PRICE_TIMESTAMP_IN_FUTURE,
+            TEST_SUCCESS
+        );
+    }
+
+    #[test]
+    fun test_get_ezero_oracle_max_asset_price_age() {
+        assert!(
+            get_ezero_oracle_max_asset_price_age() == E_ZERO_ORACLE_MAX_ASSET_PRICE_AGE,
+            TEST_SUCCESS
+        );
     }
 
     #[test]
@@ -1281,9 +1387,10 @@ module aave_config::error_tests {
     }
 
     #[test]
-    fun test_get_esigner_and_on_behalf_of_no_same() {
+    fun test_get_esigner_and_on_behalf_of_not_same() {
         assert!(
-            get_esigner_and_on_behalf_of_no_same() == ESIGNER_AND_ON_BEHALF_OF_NO_SAME,
+            get_esigner_and_on_behalf_of_not_same()
+                == ESIGNER_AND_ON_BEHALF_OF_NOT_SAME,
             TEST_SUCCESS
         );
     }
@@ -1294,9 +1401,9 @@ module aave_config::error_tests {
     }
 
     #[test]
-    fun test_get_flashloan_payer_not_receiver() {
+    fun test_get_eflashloan_payer_not_receiver() {
         assert!(
-            get_flashloan_payer_not_receiver() == EFLASHLOAN_PAYER_NOT_RECEIVER,
+            get_eflashloan_payer_not_receiver() == EFLASHLOAN_PAYER_NOT_RECEIVER,
             TEST_SUCCESS
         );
     }
@@ -1409,7 +1516,7 @@ module aave_config::error_tests {
 
     #[test]
     fun test_get_eunauthorized_claimer() {
-        assert!(get_eunauthorized_claimer() == EUNAHTHORIZED_CLAIMER, TEST_SUCCESS)
+        assert!(get_eunauthorized_claimer() == EUNAUTHORIZED_CLAIMER, TEST_SUCCESS)
     }
 
     #[test]

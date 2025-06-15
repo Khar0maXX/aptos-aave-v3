@@ -10,7 +10,7 @@ on:
 
 jobs:
   npm-scan:
-    name: test-suite
+    name: aave-test-suite
     runs-on: Larger-Github-Runners
     steps:
       - uses: actions/checkout@v4
@@ -23,13 +23,13 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: latest
           run_install: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        working-directory: test-suites
+        working-directory: aave-test-suite
 
       - name: Run pnpm audit
         run: pnpm audit
-        working-directory: test-suites
+        working-directory: aave-test-suite

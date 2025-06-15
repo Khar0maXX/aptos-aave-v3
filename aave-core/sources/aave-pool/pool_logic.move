@@ -40,15 +40,6 @@ module aave_pool::pool_logic {
         variable_borrow_index: u256
     }
 
-    // Structs
-    /// @notice Local variables for accrue to treasury calculation
-    struct AccrueToTreasuryLocalVars has drop {
-        prev_total_variable_debt: u256,
-        curr_total_variable_debt: u256,
-        total_debt_accrued: u256,
-        amount_to_mint: u256
-    }
-
     /// @notice Cache for pool reserve data to avoid repeated storage reads
     struct ReserveCache has drop {
         curr_scaled_variable_debt: u256,
@@ -425,47 +416,35 @@ module aave_pool::pool_logic {
     fun accrue_to_treasury(
         reserve_data: Object<ReserveData>, reserve_cache: &mut ReserveCache
     ) {
-        let vars = create_accrue_to_treasury_local_vars();
         if (reserve_cache.reserve_factor == 0) { return };
 
         //calculate the total variable debt at moment of the last interaction
-        vars.prev_total_variable_debt = wad_ray_math::ray_mul(
-            reserve_cache.curr_scaled_variable_debt,
-            reserve_cache.curr_variable_borrow_index
-        );
+        let prev_total_variable_debt =
+            wad_ray_math::ray_mul(
+                reserve_cache.curr_scaled_variable_debt,
+                reserve_cache.curr_variable_borrow_index
+            );
 
         //calculate the new total variable debt after accumulation of the interest on the index
-        vars.curr_total_variable_debt = wad_ray_math::ray_mul(
-            reserve_cache.curr_scaled_variable_debt,
-            reserve_cache.next_variable_borrow_index
-        );
+        let curr_total_variable_debt =
+            wad_ray_math::ray_mul(
+                reserve_cache.curr_scaled_variable_debt,
+                reserve_cache.next_variable_borrow_index
+            );
 
-        let total_debt_accrued =
-            vars.curr_total_variable_debt - vars.prev_total_variable_debt;
-        vars.amount_to_mint = math_utils::percent_mul(
-            total_debt_accrued, reserve_cache.reserve_factor
-        );
+        let total_debt_accrued = curr_total_variable_debt - prev_total_variable_debt;
+        let amount_to_mint =
+            math_utils::percent_mul(total_debt_accrued, reserve_cache.reserve_factor);
 
-        if (vars.amount_to_mint != 0) {
+        if (amount_to_mint != 0) {
             let new_accrued_to_treasury =
                 pool::get_reserve_accrued_to_treasury(reserve_data)
                     + wad_ray_math::ray_div(
-                        vars.amount_to_mint,
+                        amount_to_mint,
                         reserve_cache.next_liquidity_index
                     );
 
             pool::set_reserve_accrued_to_treasury(reserve_data, new_accrued_to_treasury)
-        }
-    }
-
-    /// @notice Creates a new AccrueToTreasuryLocalVars struct with default values
-    /// @return A new AccrueToTreasuryLocalVars struct
-    fun create_accrue_to_treasury_local_vars(): AccrueToTreasuryLocalVars {
-        AccrueToTreasuryLocalVars {
-            prev_total_variable_debt: 0,
-            curr_total_variable_debt: 0,
-            total_debt_accrued: 0,
-            amount_to_mint: 0
         }
     }
 

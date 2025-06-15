@@ -31,7 +31,6 @@ program
   .action((path: PathLike, options) => {
     let envContents: Array<string> = [];
     envContents.push("APTOS_NETWORK=local");
-    envContents.push("UPGRADE_CONTRACTS=true");
     envContents.push("ARTIFACTS_LEVEL=all");
     envContents.push("DEFAULT_FUND_AMOUNT=100000000");
 

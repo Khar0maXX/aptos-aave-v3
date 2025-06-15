@@ -1,5 +1,6 @@
 /// @title Fee Manager Module
 /// @author Aave
+/// @notice A fee module to add/manage a txn fee to mitigate the rounding error of integer arithmetic
 module aave_pool::pool_fee_manager {
     // imports
     use std::signer;
@@ -100,12 +101,10 @@ module aave_pool::pool_fee_manager {
     /// @return The fee in micro APT
     public fun get_apt_fee(asset: address): u64 acquires FeeConfig, FeeConfigMetadata {
         assert_fee_config_exists();
-        let fee_config = borrow_global<FeeConfig>(get_fee_config_object_address());
-        if (!smart_table::contains(&fee_config.asset_config, asset)) {
-            return DEFAULT_APT_FEE
-        };
-
-        *smart_table::borrow(&fee_config.asset_config, asset)
+        let fee_config = fee_config_ref();
+        *smart_table::borrow_with_default(
+            &fee_config.asset_config, asset, &DEFAULT_APT_FEE
+        )
     }
 
     #[view]
@@ -113,7 +112,7 @@ module aave_pool::pool_fee_manager {
     /// @return The address of the fee collector
     public fun get_fee_collector_address(): address acquires FeeConfig, FeeConfigMetadata {
         assert_fee_config_exists();
-        let fee_config = borrow_global<FeeConfig>(get_fee_config_object_address());
+        let fee_config = fee_config_ref();
         account::get_signer_capability_address(&fee_config.signer_cap)
     }
 
@@ -132,7 +131,7 @@ module aave_pool::pool_fee_manager {
     /// @return The total fees in micro APT
     public fun get_total_fees(): u128 acquires FeeConfig, FeeConfigMetadata {
         assert_fee_config_exists();
-        let fee_config = borrow_global<FeeConfig>(get_fee_config_object_address());
+        let fee_config = fee_config_ref();
         fee_config.total_fees
     }
 
@@ -158,6 +157,7 @@ module aave_pool::pool_fee_manager {
     public entry fun withdraw_apt_fee(
         from: &signer, to: address, amount: u128
     ) acquires FeeConfigMetadata, FeeConfig {
+        assert!(amount > 0, error_config::get_einvalid_amount());
         assert_fee_config_exists();
 
         let from_address = signer::address_of(from);
@@ -168,7 +168,7 @@ module aave_pool::pool_fee_manager {
         // Check fee amount
         assert!(amount != 0, error_config::get_einvalid_amount());
 
-        let fee_config = borrow_global<FeeConfig>(get_fee_config_object_address());
+        let fee_config = fee_config_ref();
         // Create signer for the resource account
         let fee_collector =
             &account::create_signer_with_capability(&fee_config.signer_cap);
@@ -223,8 +223,7 @@ module aave_pool::pool_fee_manager {
     ) acquires FeeConfig, FeeConfigMetadata {
         let apt_fee = get_apt_fee(asset);
         if (apt_fee != 0) {
-            let fee_config =
-                borrow_global_mut<FeeConfig>(get_fee_config_object_address());
+            let fee_config = fee_config_mut_ref();
             // Transfer fee to the fee collector resource account
             let fee_collector_address =
                 account::get_signer_capability_address(&fee_config.signer_cap);
@@ -252,12 +251,12 @@ module aave_pool::pool_fee_manager {
     /// @dev This function is only intended to be invoked once during module deployment
     /// @param account The signer of the pool owner account
     fun init_module(account: &signer) {
+        let signer_addr = signer::address_of(account);
         assert!(
-            signer::address_of(account) == @aave_pool,
+            signer_addr == @aave_pool,
             error_config::get_enot_pool_owner()
         );
 
-        let signer_addr = signer::address_of(account);
         // Create a new sticky object for fee configuration storage
         let constructor_ref = object::create_sticky_object(signer_addr);
         let object_address = object::address_from_constructor_ref(&constructor_ref);
@@ -293,6 +292,18 @@ module aave_pool::pool_fee_manager {
     /// @return True if the account is a pool admin, false otherwise
     fun only_pool_admin(account: address): bool {
         acl_manage::is_pool_admin(account)
+    }
+
+    /// @notice Returns a mutable reference to the FeeConfig resource
+    /// @return A mutable reference to the FeeConfig resource
+    inline fun fee_config_mut_ref(): &mut FeeConfig {
+        borrow_global_mut<FeeConfig>(get_fee_config_object_address())
+    }
+
+    /// @notice Returns an immutable reference to the FeeConfig resource
+    /// @return An immutable reference to the FeeConfig resource
+    inline fun fee_config_ref(): &FeeConfig {
+        borrow_global<FeeConfig>(get_fee_config_object_address())
     }
 
     // Test only functions

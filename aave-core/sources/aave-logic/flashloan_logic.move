@@ -194,7 +194,7 @@ module aave_pool::flashloan_logic {
                 // check the signer is the receiver that the receipt was issued for
                 assert!(
                     flash_loan_receiver_address == receiver,
-                    error_config::get_flashloan_payer_not_receiver()
+                    error_config::get_eflashloan_payer_not_receiver()
                 );
 
                 if (interest_rate_mode == user_config::get_interest_rate_mode_none()) {
@@ -268,7 +268,7 @@ module aave_pool::flashloan_logic {
         // check the signer is the receiver that the receipt was issued for
         assert!(
             signer::address_of(flash_loan_receiver) == receiver,
-            error_config::get_flashloan_payer_not_receiver()
+            error_config::get_eflashloan_payer_not_receiver()
         );
 
         // do flashloan repayment
@@ -449,7 +449,7 @@ module aave_pool::flashloan_logic {
 
     /// @notice Returns the complex flashloan receipt referral code
     /// @param receipt The complex flashloan receipt received
-    /// @return the complex flashloan receipt referrral code
+    /// @return the complex flashloan receipt referral code
     public fun get_complex_flashloan_referral_code(
         receipt: &ComplexFlashLoansReceipt
     ): u16 {
@@ -504,7 +504,7 @@ module aave_pool::flashloan_logic {
         let initiator_address = signer::address_of(initiator);
         assert!(
             initiator_address == on_behalf_of,
-            error_config::get_esigner_and_on_behalf_of_no_same()
+            error_config::get_esigner_and_on_behalf_of_not_same()
         );
 
         // validate flashloans logic

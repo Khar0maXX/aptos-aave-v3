@@ -19,14 +19,6 @@ on:
         options:
           - 'true'
           - 'false'
-      upgradeContracts:
-        description: 'Upgrade Contracts'
-        required: true
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
 
 jobs:
   testnet-deployment:
@@ -40,10 +32,10 @@ jobs:
       MOVE_VERSION: 2.1
       COMPILER_VERSION: 2.0
       ARTIFACTS_LEVEL: all
-      DEFAULT_FUND_AMOUNT: 40000000
+      DEFAULT_FUND_AMOUNT: 100000000
       APTOS_NETWORK: ${{ github.event.inputs.network }}
-      UPGRADE_CONTRACTS: ${{ github.event.inputs.upgradeContracts }}
       DEFAULT_FUNDER_PRIVATE_KEY: ${{ secrets.GH_DEFAULT_FUNDER_PRIVATE_KEY }}
+      NODE_API_KEY: ${{ secrets.GH_NODE_API_KEY }}
 
       # external profiles
       CHAINLINK_DATA_FEEDS: ${{ secrets.GH_CHAINLINK_DATA_FEEDS }}
@@ -55,19 +47,12 @@ jobs:
       AAVE_MATH_PRIVATE_KEY: ${{ secrets.GH_AAVE_MATH_PRIVATE_KEY }}
       AAVE_ORACLE_PRIVATE_KEY: ${{ secrets.GH_AAVE_ORACLE_PRIVATE_KEY }}
       AAVE_POOL_PRIVATE_KEY: ${{ secrets.GH_AAVE_POOL_PRIVATE_KEY }}
-      A_TOKENS_PRIVATE_KEY: ${{ secrets.GH_A_TOKENS_PRIVATE_KEY }}
       AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY: ${{ secrets.GH_AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY }}
-      VARIABLE_TOKENS_PRIVATE_KEY: ${{ secrets.GH_VARIABLE_TOKENS_PRIVATE_KEY }}
       AAVE_LARGE_PACKAGES_PRIVATE_KEY: ${{ secrets.GH_AAVE_LARGE_PACKAGES_PRIVATE_KEY }}
       AAVE_DATA_PRIVATE_KEY: ${{ secrets.GH_AAVE_DATA_PRIVATE_KEY }}
-
-      # test profiles
-      TEST_ACCOUNT_0_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_0_PRIVATE_KEY }}
-      TEST_ACCOUNT_1_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_1_PRIVATE_KEY }}
-      TEST_ACCOUNT_2_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_2_PRIVATE_KEY }}
-      TEST_ACCOUNT_3_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_3_PRIVATE_KEY }}
-      TEST_ACCOUNT_4_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_4_PRIVATE_KEY }}
-      TEST_ACCOUNT_5_PRIVATE_KEY: ${{ secrets.GH_TEST_ACCOUNT_5_PRIVATE_KEY }}
+      AAVE_POOL_ADMIN_MULTISIG_ADDRESS: ${{ secrets.GH_AAVE_POOL_ADMIN_MULTISIG_ADDRESS }}
+      AAVE_POOL_ADMIN_PRIVATE_KEY: ${{ secrets.GH_AAVE_POOL_ADMIN_PRIVATE_KEY }}
+      # NOTE: do not set AAVE_DATA_FEEDS_PRIVATE_KEY and AAVE_PLATFORM_PRIVATE_KEY here as they are only for local dev mode
 
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +62,6 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y libudev-dev lld libdw-dev
 
       - name: Install Aptos CLI
         uses: ./.github/actions/install-aptos-cli
@@ -93,14 +77,8 @@ jobs:
       - name: Run Aptos Create Profiles
         run: make init-profiles
 
-      - name: Run Aptos Create Test Profiles
-        run: make init-test-profiles
-
       - name: Run Aptos Top-Up Profiles
         run: make top-up-profiles
-
-      - name: Run Aptos Top-Up Test Profiles
-        run: make top-up-test-profiles
 
       - name: Print Aptos Config File
         run: cat ./.aptos/config.yaml
@@ -108,26 +86,32 @@ jobs:
       - name: Run Aptos Compile All Contracts
         run: make compile-all
 
+#      - name: Run clear-staging-large-packages
+#        run: make clear-staging-large-packages
+
       - name: Run Aptos Publish All Contracts
         run: make publish-all
 
       - name: Run Script - Configure Acl
-        run: make configure-acl
+        if: ${{ github.event.inputs.initData == 'true' }}
+        run: make configure-acl && sleep 5
+
+      - name: Run Script - Configure Emodes
+        if: ${{ github.event.inputs.initData == 'true' }}
+        run: make configure-emodes && sleep 5
 
       - name: Run Script - Create Reserves
-        run: make create-reserves
-
-      - name: Run Script - Create Emodes
-        run: make create-emodes
+        if: ${{ github.event.inputs.initData == 'true' }}
+        run: make create-reserves && sleep 5
 
       - name: Run Script - Configure Reserves
-        run: make configure-reserves
+        if: ${{ github.event.inputs.initData == 'true' }}
+        run: make configure-reserves && sleep 5
 
       - name: Run Script - Configure Interest Rates
-        run: make configure-interest-rates
-
-      - name: Run Script - Configure Interest Rates
-        run: make configure-interest-rates
+        if: ${{ github.event.inputs.initData == 'true' }}
+        run: make configure-interest-rates && sleep 5
 
       - name: Run Script - Configure Price Feeds
-        run: make configure-price-feeds
+        if: ${{ github.event.inputs.initData == 'true' }}
+        run: make configure-price-feeds && sleep 5

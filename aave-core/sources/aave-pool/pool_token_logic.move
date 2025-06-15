@@ -208,7 +208,7 @@ module aave_pool::pool_token_logic {
 
         // Assert that the asset decimals satisfy the min requirement
         assert!(
-            underlying_asset_decimals
+            (underlying_asset_decimals as u256)
                 >= reserve_config::get_min_reserve_asset_decimals(),
             error_config::get_emin_asset_decimal_places()
         );

@@ -19,7 +19,6 @@ module aave_pool::variable_debt_token_factory {
     use aave_acl::acl_manage;
     use aave_config::error_config;
     use aave_math::wad_ray_math;
-    use aave_pool::token_base::only_pool_admin;
     use aave_pool::pool;
     use aave_pool::token_base;
 
@@ -247,7 +246,7 @@ module aave_pool::variable_debt_token_factory {
 
     // Friend functions
     /// @notice Creates a new variable debt token
-    /// @dev Only callable by the pool_token_logic module
+    /// @dev Callable by the pool_token_logic module
     /// @param signer The signer of the caller
     /// @param name The name of the variable debt token
     /// @param symbol The symbol of the variable debt token
@@ -350,14 +349,13 @@ module aave_pool::variable_debt_token_factory {
     }
 
     /// @notice Sets an incentives controller for the variable debt token
-    /// @dev Only callable by the pool_token_logic module
+    /// @dev Callable by the pool_token_logic module
     /// @param admin The address of the admin calling the method
     /// @param metadata_address The address of the variable debt token
     /// @param incentives_controller The address of the incentives controller
     public(friend) fun set_incentives_controller(
         admin: &signer, metadata_address: address, incentives_controller: Option<address>
     ) {
-        only_pool_admin(admin);
         token_base::set_incentives_controller(
             admin, metadata_address, incentives_controller
         );
@@ -382,7 +380,7 @@ module aave_pool::variable_debt_token_factory {
     }
 
     /// @notice Drops the variable debt token associated data
-    /// @dev Only callable by the pool_token_logic module
+    /// @dev Callable by the pool_token_logic module
     /// @param metadata_address The address of the metadata object
     public(friend) fun drop_token(metadata_address: address) acquires TokenMap, TokenData {
         assert_token_exists(metadata_address);

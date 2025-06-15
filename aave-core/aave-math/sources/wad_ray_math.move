@@ -127,7 +127,7 @@ module aave_math::wad_ray_math {
 
     /// @notice Converts wad up to ray
     /// @param a Wad value to convert
-    /// @return b The value converted to ray
+    /// @return b The value converted to ray, rounded half up to the nearest ray
     public fun wad_to_ray(a: u256): u256 {
         assert!(
             a <= U256_MAX / WAD_RAY_RATIO,
