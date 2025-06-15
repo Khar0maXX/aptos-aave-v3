@@ -1026,7 +1026,7 @@ module aave_data::v1_values {
                 liquidation_bonus: (85 * math_utils::get_percentage_factor()) / 1000, // ok
                 liquidation_protocol_fee: (10 * math_utils::get_percentage_factor())
                     / 100, // ok
-                borrowing_enabled: true, // ok
+                borrowing_enabled: false, // ok
                 flashLoan_enabled: true, // ok
                 reserve_factor: (20 * math_utils::get_percentage_factor()) / 100, // ok
                 supply_cap: 25_000, // ok

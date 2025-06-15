@@ -103,7 +103,6 @@ def parse_csv_file(package: str) -> list[str]:
         lcov_output.append(f"LF:{total_lines}")
         lcov_output.append(f"LH:{hit_lines}")
         lcov_output.append("end_of_record\n")
-        # print("XXXX", lcov_output)
     return lcov_output
 
 def main():
