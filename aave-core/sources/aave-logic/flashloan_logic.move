@@ -211,8 +211,7 @@ module aave_pool::flashloan_logic {
                         flash_loan_receiver, &repayment_params, sender
                     );
                 } else {
-                    // collect a gas fee so no free borrow can be opened.
-                    // when this branch is reached, the premium is already 0
+                    // collect an extra fee if applicable
                     pool_fee_manager::collect_apt_fee(
                         flash_loan_receiver, current_asset
                     );

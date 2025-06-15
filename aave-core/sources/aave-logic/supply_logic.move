@@ -83,8 +83,7 @@ module aave_pool::supply_logic {
             on_behalf_of
         );
 
-        // collect a small tx fee to eliminate potential integer rounding profit
-        // i.e. supply(99), but withdraw(100)
+        // collect an extra fee if applicable
         pool_fee_manager::collect_apt_fee(account, asset);
 
         // update interest rates
@@ -212,8 +211,7 @@ module aave_pool::supply_logic {
             &reserve_cache, amount_to_withdraw, user_balance
         );
 
-        // collect a small tx fee to eliminate potential integer rounding profit
-        // i.e. supply(99), but withdraw(100)
+        // collect an extra fee if applicable
         pool_fee_manager::collect_apt_fee(account, asset);
 
         // update interest rates
