@@ -96,8 +96,7 @@ module aave_pool::borrow_logic {
         referral_code: u16,
         on_behalf_of: address
     ) {
-        // Collect a small tx fee to eliminate potential integer rounding profit
-        // i.e. repay(99) to pay off borrow(100)
+        // Collect an extra gas fee if applicable
         pool_fee_manager::collect_apt_fee(account, asset);
 
         internal_borrow(
@@ -367,7 +366,7 @@ module aave_pool::borrow_logic {
             variable_debt
         );
 
-        // Collect a small tx fee to eliminate potential integer rounding profit
+        // Collect an extra gas fee if applicable
         pool_fee_manager::collect_apt_fee(account, asset);
 
         // Calculate actual repayment amount
