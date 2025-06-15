@@ -9,6 +9,7 @@ module aave_oracle::oracle_tests {
     use aptos_framework::timestamp::{set_time_has_started_for_testing};
     use data_feeds::registry::Self;
     use aptos_framework::event::emitted_events;
+    use aptos_framework::timestamp;
     use data_feeds::router;
 
     const TEST_SUCCESS: u64 = 1;
@@ -16,7 +17,6 @@ module aave_oracle::oracle_tests {
     const TEST_ASSET: address = @0x444;
     const TEST_FEED_ID: vector<u8> = x"0003fbba4fce42f65d6032b18aee53efdf526cc734ad296cb57565979d883bdd";
     const TEST_FEED_PRICE: u256 = 63762090573356116000000;
-    const TEST_FEED_TIMESTAMP: u256 = 0x000066ed1742;
     const TEST_ASSET_CUSTOM_PRICE: u256 = 1200;
 
     public fun get_test_feed_id(): vector<u8> {
@@ -32,7 +32,7 @@ module aave_oracle::oracle_tests {
         registry::set_feed_for_test(TEST_FEED_ID, utf8(b"description"), config_id);
         registry::perform_update_for_test(
             TEST_FEED_ID,
-            TEST_FEED_TIMESTAMP,
+            (timestamp::now_seconds() as u256),
             TEST_FEED_PRICE,
             vector::empty<u8>()
         )
@@ -633,10 +633,13 @@ module aave_oracle::oracle_tests {
         let _ = oracle::get_asset_price(TEST_ASSET);
     }
 
-    #[test(aave_oracle = @aave_oracle)]
+    #[test(aave_oracle = @aave_oracle, std = @aptos_framework)]
     fun test_set_custom_price_succeeds_even_when_feed_id_exists(
-        aave_oracle: &signer
+        aave_oracle: &signer, std: &signer
     ) {
+        // start the timer
+        set_time_has_started_for_testing(std);
+
         // init aave oracle
         oracle::test_init_oracle(aave_oracle);
 
@@ -669,10 +672,13 @@ module aave_oracle::oracle_tests {
         );
     }
 
-    #[test(aave_oracle = @aave_oracle)]
+    #[test(aave_oracle = @aave_oracle, std = @aptos_framework)]
     fun test_set_feed_id_succeeds_even_when_custom_price_exists(
-        aave_oracle: &signer
+        aave_oracle: &signer, std: &signer
     ) {
+        // start the timer
+        set_time_has_started_for_testing(std);
+
         // init aave oracle
         oracle::test_init_oracle(aave_oracle);
 
@@ -894,7 +900,7 @@ module aave_oracle::oracle_tests {
             aptos = @aptos_framework
         )
     ]
-    fun test_oracle_stable_price_cap_adaptor_when_price_cap_higher_than_base_price(
+    fun test_oracle_stable_price_cap_adapter_when_price_cap_higher_than_base_price(
         super_admin: &signer,
         oracle_admin: &signer,
         aave_oracle: &signer,
@@ -947,7 +953,7 @@ module aave_oracle::oracle_tests {
 
         // the asset price cap must be retrievable
         assert!(
-            *option::borrow(&oracle::get_price_cap(asset_address))
+            *option::borrow(&oracle::get_stable_price_cap(asset_address))
                 == asset_capped_price,
             TEST_SUCCESS
         );
@@ -1158,5 +1164,82 @@ module aave_oracle::oracle_tests {
             oracle::get_asset_price(asset_address) == TEST_ASSET_CUSTOM_PRICE,
             TEST_SUCCESS
         );
+    }
+
+    #[
+        test(
+            super_admin = @aave_acl,
+            oracle_admin = @0x06,
+            aave_oracle = @aave_oracle,
+            data_feeds = @data_feeds,
+            platform = @platform,
+            aptos = @aptos_framework
+        )
+    ]
+    #[expected_failure(abort_code = 1217, location = aave_oracle::oracle)]
+    fun test_stale_price(
+        super_admin: &signer,
+        oracle_admin: &signer,
+        aave_oracle: &signer,
+        data_feeds: &signer,
+        platform: &signer,
+        aptos: &signer
+    ) {
+        use aptos_framework::timestamp;
+
+        // start the timer at a known time
+        timestamp::set_time_has_started_for_testing(aptos);
+
+        // initialize ACL module and add admin roles
+        acl_manage::test_init_module(super_admin);
+        acl_manage::add_pool_admin(super_admin, signer::address_of(oracle_admin));
+        acl_manage::add_asset_listing_admin(
+            super_admin, signer::address_of(oracle_admin)
+        );
+
+        // initialize oracle and chainlink
+        oracle::test_init_module(aave_oracle);
+        set_up_chainlink_oracle(data_feeds, platform);
+
+        // set up test asset
+        let test_asset = TEST_ASSET;
+        let test_feed_id = TEST_FEED_ID;
+        let test_price = 50000000000000000000000u256; // $50,000 in 18 decimals
+
+        // create a feed in the registry
+        let config_id = vector[1];
+        registry::set_feed_for_test(test_feed_id, utf8(b"Stale Test Feed"), config_id);
+
+        // set a price with CURRENT timestamp (fresh price)
+        let current_time = timestamp::now_seconds();
+        let fresh_timestamp = (current_time * 1000) as u256;
+
+        registry::perform_update_for_test(
+            test_feed_id,
+            fresh_timestamp,
+            test_price,
+            vector::empty<u8>()
+        );
+
+        // set the feed ID for our test asset
+        oracle::set_asset_feed_id(oracle_admin, test_asset, test_feed_id);
+
+        // verify fresh price works (this should pass)
+        let fetched_price = oracle::get_asset_price(test_asset);
+        assert!(fetched_price == test_price, 1);
+
+        // fast-forward time by 2 hours (7200 seconds)
+        timestamp::fast_forward_seconds(7200);
+
+        // update the registry with STALE price (old timestamp)
+        registry::perform_update_for_test(
+            test_feed_id,
+            fresh_timestamp, // SAME old timestamp (2 hours stale)
+            test_price * 2, //different price to prove it's reading stale data
+            vector::empty<u8>()
+        );
+
+        // try to fetch price - this should FAIL for being stale
+        let _ = oracle::get_asset_price(test_asset);
     }
 }

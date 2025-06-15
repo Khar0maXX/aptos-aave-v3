@@ -11,8 +11,10 @@ aave_data = "_"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework/", rev = "mainnet" }
+AaveAcl = { local = "../aave-acl" }
 AaveConfig = { local = "../aave-config" }
 AaveMath = { local = "../aave-math" }
+AaveOracle = { local = "../aave-oracle" }
 AavePool = { local = "../" }
 
 [dev-dependencies]

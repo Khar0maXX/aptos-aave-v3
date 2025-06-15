@@ -61,7 +61,6 @@ services:
       - hasura
     environment:
       APTOS_NETWORK: local
-      UPGRADE_CONTRACTS: true
       ARTIFACTS_LEVEL: all
       DEFAULT_FUND_AMOUNT: 100000000
       DEFAULT_FUNDER_PRIVATE_KEY: 0x0
@@ -70,9 +69,7 @@ services:
       AAVE_MATH_PRIVATE_KEY: 0x0
       AAVE_ORACLE_PRIVATE_KEY: 0x0
       AAVE_POOL_PRIVATE_KEY: 0x0
-      A_TOKENS_PRIVATE_KEY: 0x0
       AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY: 0x0
-      VARIABLE_TOKENS_PRIVATE_KEY: 0x0
       AAVE_LARGE_PACKAGES_PRIVATE_KEY: 0x0
     networks:
       - aptos-local-testnet-network

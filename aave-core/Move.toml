@@ -15,6 +15,6 @@ AaveAcl = { local = "./aave-acl" }
 AaveConfig = { local = "./aave-config" }
 AaveMath = { local = "./aave-math" }
 AaveOracle = { local = "./aave-oracle" }
-AaveMockUnderlyings = { local = "./aave-mock-underlyings" }
 
 [dev-dependencies]
+AaveMockUnderlyings = { local = "./aave-mock-underlyings" }

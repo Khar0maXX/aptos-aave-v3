@@ -27,6 +27,12 @@ module aave_pool::validation_logic {
     public fun validate_flashloan_complex(
         assets: &vector<address>, amounts: &vector<u256>, interest_rate_modes: &vector<u8>
     ) {
+        // ensure that at least 1 asset is being borrowed
+        assert!(
+            vector::length(assets) > 0,
+            error_config::get_einconsistent_flashloan_params()
+        );
+        // ensure arguments consistency
         assert!(
             vector::length(assets) == vector::length(amounts)
                 && vector::length(assets) == vector::length(interest_rate_modes),
@@ -348,9 +354,6 @@ module aave_pool::validation_logic {
         if (user_config::is_borrowing_any(user_config_map)) {
             let (siloed_borrowing_enabled, siloed_borrowing_address) =
                 pool::get_siloed_borrowing_state(user_address);
-
-            let siloed_borrowing_enabled = siloed_borrowing_enabled;
-            let siloed_borrowing_address = siloed_borrowing_address;
 
             if (siloed_borrowing_enabled) {
                 assert!(

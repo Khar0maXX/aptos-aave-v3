@@ -958,6 +958,7 @@ module aave_pool::rewards_controller {
             );
 
         reward_data.distribution_end = new_distribution_end;
+        reward_data.last_update_timestamp = (timestamp::now_seconds() as u32);
 
         event::emit(
             AssetConfigUpdated {
@@ -1043,6 +1044,7 @@ module aave_pool::rewards_controller {
             );
 
             reward_data.emission_per_second = new_emission_per_second;
+            reward_data.last_update_timestamp = (timestamp::now_seconds() as u32);
 
             event::emit(
                 AssetConfigUpdated {
@@ -1216,6 +1218,7 @@ module aave_pool::rewards_controller {
             reward_data.emission_per_second = reward_input.emission_per_second;
             reward_data.max_emission_rate = reward_input.max_emission_rate;
             reward_data.distribution_end = reward_input.distribution_end;
+            reward_data.last_update_timestamp = (timestamp::now_seconds() as u32);
 
             event::emit(
                 AssetConfigUpdated {
@@ -1249,11 +1252,7 @@ module aave_pool::rewards_controller {
                 error_config::get_ereward_index_overflow()
             );
             index_updated = true;
-
             reward_data.index = (new_index as u128);
-            reward_data.last_update_timestamp = (timestamp::now_seconds() as u32);
-        } else {
-            reward_data.last_update_timestamp = (timestamp::now_seconds() as u32);
         };
 
         (new_index, index_updated)
@@ -1322,6 +1321,9 @@ module aave_pool::rewards_controller {
             let reward_data = simple_map::borrow_mut(&mut asset_data.rewards, &reward);
             let (new_asset_index, reward_data_updated) =
                 update_reward_data(reward_data, total_supply, asset_unit);
+            if (reward_data_updated) {
+                reward_data.last_update_timestamp = (timestamp::now_seconds() as u32);
+            };
 
             // Unlike for the `asset` and `reward` distribution which is fine to
             // "silently exit" because it means that an admin/authed user has
@@ -1504,19 +1506,19 @@ module aave_pool::rewards_controller {
         let distribution_end = (reward_data.distribution_end as u256);
         let emission_per_second = (reward_data.emission_per_second as u256);
         let last_update_timestamp = (reward_data.last_update_timestamp as u256);
+        let now = timestamp::now_seconds() as u256;
 
         if (emission_per_second == 0
             || total_supply == 0
-            || last_update_timestamp == (timestamp::now_seconds() as u256)
+            || last_update_timestamp == now
             || last_update_timestamp >= distribution_end) {
             return (old_index, old_index)
         };
 
-        let current_timestamp = (timestamp::now_seconds() as u256);
-
-        if ((timestamp::now_seconds() as u256) > distribution_end) {
-            current_timestamp = distribution_end;
-        };
+        let current_timestamp =
+            if (now > distribution_end) {
+                distribution_end
+            } else { now };
 
         let time_delta = current_timestamp - last_update_timestamp;
         let first_term = emission_per_second * time_delta * asset_unit;

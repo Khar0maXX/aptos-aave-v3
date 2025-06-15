@@ -12,7 +12,7 @@ module aave_math::math_utils_tests {
         get_half_percentage_factor_for_testing,
         get_percentage_factor,
         get_percentage_factor_for_testing,
-        get_seconds_per_year_for_testing,
+        get_seconds_per_year,
         get_u256_max_for_testing,
         percent_div,
         percent_mul,
@@ -60,8 +60,7 @@ module aave_math::math_utils_tests {
             calculate_linear_interest(interest_rate_per_year, ts_one_hour_ago);
         // verification
         let percentage_increase =
-            (interest_rate_per_year * (one_hour_in_secs as u256))
-                / get_seconds_per_year_for_testing();
+            (interest_rate_per_year * (one_hour_in_secs as u256)) / get_seconds_per_year();
         let increased_interest_rate = interest_rate_per_year + percentage_increase;
         assert!(increased_interest_rate == lin_interest_rate_increase, TEST_SUCCESS);
     }

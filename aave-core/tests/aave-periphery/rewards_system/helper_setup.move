@@ -13,7 +13,7 @@ module aave_pool::helper_setup {
     use aptos_framework::timestamp;
 
     use aave_acl::acl_manage;
-    use aave_math::math_utils::get_seconds_per_year_for_testing;
+    use aave_math::math_utils::get_seconds_per_year;
     use aave_oracle::oracle;
     use aave_pool::supply_logic;
     use aave_pool::rewards_controller;
@@ -55,7 +55,7 @@ module aave_pool::helper_setup {
         let apt_token = coin::paired_metadata<aptos_coin::AptosCoin>().destroy_some();
 
         // kickoff time
-        timestamp::fast_forward_seconds(get_seconds_per_year_for_testing() as u64);
+        timestamp::fast_forward_seconds(get_seconds_per_year() as u64);
 
         // setup ChainLink
         let signer_data_feeds = account::create_signer_for_test(@data_feeds);
@@ -273,8 +273,7 @@ module aave_pool::helper_setup {
         let default_emission_per_second = 100;
         let default_max_emission_rates = default_emission_per_second * 2;
         let default_distribution_end =
-            (timestamp::now_seconds() as u32)
-                + (get_seconds_per_year_for_testing() as u32);
+            (timestamp::now_seconds() as u32) + (get_seconds_per_year() as u32);
 
         emission_manager::configure_assets(
             &signer_emission_admin_default,

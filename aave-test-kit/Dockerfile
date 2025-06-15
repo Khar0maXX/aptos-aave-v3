@@ -1,9 +1,10 @@
 #syntax=docker/dockerfile:1.4
 
-FROM --platform=linux/amd64 debian:bullseye-slim
+FROM --platform=linux/amd64 debian:bookworm-slim
 
 # Install required packages
 RUN apt-get update -y \
+  && apt-get upgrade -y \
   && apt-get install -y python3 python3-pip curl make wget git \
   && wget https://github.com/mikefarah/yq/releases/download/v4.34.1/yq_linux_amd64 -O /usr/local/bin/yq \
   && chmod +x /usr/local/bin/yq \
@@ -17,7 +18,6 @@ ENV PATH="$PATH:${HOME}/.local/bin"
 
 # Set default environment variables, which can be overridden
 ENV APTOS_NETWORK=local \
-  UPGRADE_CONTRACTS=true \
   ARTIFACTS_LEVEL=all \
   DEFAULT_FUND_AMOUNT=100000000 \
   INIT_DATA=true \
@@ -27,9 +27,7 @@ ENV APTOS_NETWORK=local \
   AAVE_MATH_PRIVATE_KEY=0x0 \
   AAVE_ORACLE_PRIVATE_KEY=0x0 \
   AAVE_POOL_PRIVATE_KEY=0x0 \
-  A_TOKENS_PRIVATE_KEY=0x0 \
   AAVE_MOCK_UNDERLYING_TOKENS_PRIVATE_KEY=0x0 \
-  VARIABLE_TOKENS_PRIVATE_KEY=0x0 \
   AAVE_LARGE_PACKAGES_PRIVATE_KEY=0x0
 
 # Expose necessary ports

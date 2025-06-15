@@ -74,7 +74,7 @@ module aave_config::reserve_config {
     const MAX_VALID_EMODE_CATEGORY: u256 = 255;
     const MAX_VALID_DEBT_CEILING: u256 = 1099511627775;
     const MAX_VALID_LIQUIDATION_GRACE_PERIOD: u256 = 4 * 3600; // 4 hours in secs
-    const MIN_RESERVE_ASSET_DECIMALS: u8 = 6;
+    const MIN_RESERVE_ASSET_DECIMALS: u256 = 6;
 
     const DEBT_CEILING_DECIMALS: u256 = 2;
     const MAX_RESERVES_COUNT: u256 = 128;
@@ -307,7 +307,7 @@ module aave_config::reserve_config {
 
     /// @notice Gets the minimum number of reserve asset decimals
     /// @return The minimum decimals required for reserve assets
-    public fun get_min_reserve_asset_decimals(): u8 {
+    public fun get_min_reserve_asset_decimals(): u256 {
         MIN_RESERVE_ASSET_DECIMALS
     }
 
@@ -363,6 +363,10 @@ module aave_config::reserve_config {
         self: &mut ReserveConfigurationMap, decimals: u256
     ) {
         assert!(decimals <= MAX_VALID_DECIMALS, error_config::get_einvalid_decimals());
+        assert!(
+            decimals >= MIN_RESERVE_ASSET_DECIMALS,
+            error_config::get_einvalid_decimals()
+        );
         self.data =
             (self.data & DECIMALS_MASK) | (
                 decimals << RESERVE_DECIMALS_START_BIT_POSITION

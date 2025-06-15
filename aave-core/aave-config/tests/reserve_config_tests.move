@@ -57,7 +57,7 @@ module aave_config::reserve_tests {
     };
 
     //
-    // Test example reference link: https://github.com/aave/aave-v3-core/blob/master/test-suites/reserve-configuration.spec.ts
+    // Test example reference link: https://github.com/aave/aave-v3-core/blob/master/aave-test-suite/reserve-configuration.spec.ts
     // test functions
     //
     #[test_only]
@@ -85,7 +85,7 @@ module aave_config::reserve_tests {
     const ENUM_EMODE_CATEGORY: u256 = 7;
 
     const MAX_VALID_LIQUIDATION_GRACE_PERIOD: u256 = 4 * 3600; // 4 hours in secs
-    const MIN_RESERVE_ASSET_DECIMALS: u8 = 6;
+    const MIN_RESERVE_ASSET_DECIMALS: u256 = 6;
     const DEBT_CEILING_DECIMALS: u256 = 2;
     const MAX_RESERVES_COUNT: u256 = 128;
 
@@ -178,9 +178,9 @@ module aave_config::reserve_tests {
         check_params(&reserve_config, ENUM_DECIMALS, DECIMALS);
         assert!(get_decimals(&reserve_config) == DECIMALS, SUCCESS);
 
-        set_decimals(&mut reserve_config, ZERO);
-        check_params(&reserve_config, ENUM_DECIMALS, ZERO);
-        assert!(get_decimals(&reserve_config) == ZERO, SUCCESS);
+        set_decimals(&mut reserve_config, get_max_valid_decimals());
+        check_params(&reserve_config, ENUM_DECIMALS, get_max_valid_decimals());
+        assert!(get_decimals(&reserve_config) == get_max_valid_decimals(), SUCCESS);
     }
 
     #[test]
@@ -423,9 +423,11 @@ module aave_config::reserve_tests {
         check_params(&reserve_config, ENUM_DECIMALS, get_max_valid_decimals());
         assert!(get_decimals(&reserve_config) == get_max_valid_decimals(), SUCCESS);
 
-        set_decimals(&mut reserve_config, ZERO);
-        check_params(&reserve_config, ENUM_DECIMALS, ZERO);
-        assert!(get_decimals(&reserve_config) == ZERO, SUCCESS);
+        set_decimals(&mut reserve_config, get_min_reserve_asset_decimals());
+        check_params(&reserve_config, ENUM_DECIMALS, get_min_reserve_asset_decimals());
+        assert!(
+            get_decimals(&reserve_config) == get_min_reserve_asset_decimals(), SUCCESS
+        );
     }
 
     #[test]

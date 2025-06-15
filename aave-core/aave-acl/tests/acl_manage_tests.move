@@ -295,11 +295,6 @@ module aave_acl::acl_manage_tests {
         // init the module
         test_init_module(super_admin);
 
-        // check emitted events
-        let emitted_events = emitted_events<RoleGranted>();
-        // make sure event of type was emitted
-        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
-
         // 1. Test the role already exists
         // set role admin
         let role_admin = utf8(b"role_admin");
@@ -315,7 +310,7 @@ module aave_acl::acl_manage_tests {
         // check emitted events
         let emitted_events = emitted_events<RoleGranted>();
         // make sure event of type was emitted
-        assert!(vector::length(&emitted_events) == 2, TEST_SUCCESS);
+        assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
 
         // check the address has the role assigned
         assert!(
@@ -334,7 +329,7 @@ module aave_acl::acl_manage_tests {
         // check emitted events
         let emitted_events = emitted_events<RoleGranted>();
         // make sure event of type was emitted
-        assert!(vector::length(&emitted_events) == 3, TEST_SUCCESS);
+        assert!(vector::length(&emitted_events) == 2, TEST_SUCCESS);
 
         // Re-authorize the user role already exists
         grant_role(
@@ -346,7 +341,7 @@ module aave_acl::acl_manage_tests {
         // check emitted events
         let emitted_events = emitted_events<RoleGranted>();
         // make sure event of type was emitted
-        assert!(vector::length(&emitted_events) == 3, TEST_SUCCESS);
+        assert!(vector::length(&emitted_events) == 2, TEST_SUCCESS);
 
         // check the address has the role assigned
         assert!(
@@ -655,7 +650,7 @@ module aave_acl::acl_manage_tests {
         assert!(has_role(role, signer::address_of(user)), TEST_SUCCESS);
 
         // 2. Attempt to renounce the role by the correct user
-        renounce_role(user, role, signer::address_of(user));
+        renounce_role(user, role);
 
         // check emitted events
         let emitted_events = emitted_events<RoleRevoked>();
@@ -666,8 +661,7 @@ module aave_acl::acl_manage_tests {
     }
 
     #[test(super_admin = @aave_acl, user = @0x01)]
-    #[expected_failure(abort_code = 1003, location = aave_acl::acl_manage)]
-    fun test_renounce_role_expected_failure(
+    fun test_renounce_role_not_granted(
         super_admin: &signer, user: &signer
     ) {
         test_init_module(super_admin);
@@ -678,8 +672,8 @@ module aave_acl::acl_manage_tests {
         grant_role(super_admin, role, signer::address_of(user));
         assert!(has_role(role, signer::address_of(user)), TEST_SUCCESS);
 
-        // 2. Attempt to renounce the role by an unauthorized signer
-        renounce_role(super_admin, role, signer::address_of(user));
+        // 2. Attempt to renounce a role that is not granted to the caller
+        renounce_role(super_admin, role);
         assert!(has_role(role, signer::address_of(user)), TEST_SUCCESS);
     }
 
@@ -710,5 +704,18 @@ module aave_acl::acl_manage_tests {
             has_role(default_admin_role(), signer::address_of(super_admin)),
             TEST_SUCCESS
         );
+    }
+
+    #[test(super_admin = @aave_acl)]
+    #[expected_failure(abort_code = 77, location = aave_acl::acl_manage)]
+    fun test_grant_role_to_zero_address(super_admin: &signer) {
+        // Initialize the module
+        test_init_module(super_admin);
+
+        // Create a test role
+        let test_role = utf8(b"TEST_ROLE");
+
+        // Try to grant role to zero address (0x0) - revert expected
+        grant_role(super_admin, test_role, @0x0);
     }
 }

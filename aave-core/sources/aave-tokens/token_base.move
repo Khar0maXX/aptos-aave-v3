@@ -646,7 +646,7 @@ module aave_pool::token_base {
         assert_token_exists(metadata_address);
         assert_managed_fa_exists(metadata_address);
 
-        // detach the managed fungibel asset from the metadata address
+        // detach the managed fungible asset from the metadata address
         move_from<ManagedFungibleAsset>(metadata_address);
     }
 

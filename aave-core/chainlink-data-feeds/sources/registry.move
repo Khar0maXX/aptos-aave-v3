@@ -657,11 +657,13 @@ module data_feeds::registry {
         len
     }
 
+    #[test_only]
     public fun set_feed_for_test(feed_id: vector<u8>, description: String, config_id: vector<u8>) acquires Registry {
         let registry = borrow_global_mut<Registry>(get_state_addr());
         set_feeds_internal(registry, vector[feed_id], vector[description], config_id);
     }
 
+    #[test_only]
     public fun perform_update_for_test(feed_id: vector<u8>, observation_timestamp: u256, benchmark_price: u256, report_data: vector<u8>) acquires Registry {
         let registry = borrow_global_mut<Registry>(get_state_addr());
         assert!(

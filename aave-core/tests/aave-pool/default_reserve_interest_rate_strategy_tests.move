@@ -21,7 +21,7 @@ module aave_pool::default_reserve_interest_rate_strategy_tests {
         assert_reserve_interest_rate_strategy_map_initialized_for_testing,
         bps_to_ray_test_for_testing,
         init_interest_rate_strategy_for_testing,
-        get_reserve_interest_rate_strategy_bsp,
+        get_reserve_interest_rate_strategy_bps,
         get_optimal_usage_ratio_for_testing,
         get_variable_rate_slope1_for_testing,
         get_variable_rate_slope2_for_testing,
@@ -182,7 +182,7 @@ module aave_pool::default_reserve_interest_rate_strategy_tests {
             aptos_framework = @0x1
         )
     ]
-    fun test_get_reserve_interest_rate_strategy_bsp(
+    fun test_get_reserve_interest_rate_strategy_bps(
         pool: &signer,
         aave_role_super_admin: &signer,
         aave_std: &signer,
@@ -208,7 +208,7 @@ module aave_pool::default_reserve_interest_rate_strategy_tests {
         let variable_rate_slope2: u256 = 300;
         let base_variable_borrow_rate: u256 = 100;
 
-        let interest_rate_data = get_reserve_interest_rate_strategy_bsp(asset_address);
+        let interest_rate_data = get_reserve_interest_rate_strategy_bps(asset_address);
         assert!(
             get_optimal_usage_ratio_for_testing(interest_rate_data) == 0, TEST_SUCCESS
         );
@@ -237,7 +237,7 @@ module aave_pool::default_reserve_interest_rate_strategy_tests {
         assert!(vector::length(&emitted_events) == 1, TEST_SUCCESS);
 
         // assertions on getters
-        let interest_rate_data = get_reserve_interest_rate_strategy_bsp(asset_address);
+        let interest_rate_data = get_reserve_interest_rate_strategy_bps(asset_address);
         assert!(
             get_optimal_usage_ratio_for_testing(interest_rate_data)
                 == optimal_usage_ratio,

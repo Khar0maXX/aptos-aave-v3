@@ -189,7 +189,7 @@ module aave_pool::borrow_logic {
     ) {
         // Verify that the user and on_behalf_of addresses match
         assert!(
-            user == on_behalf_of, error_config::get_esigner_and_on_behalf_of_no_same()
+            user == on_behalf_of, error_config::get_esigner_and_on_behalf_of_not_same()
         );
 
         // Get reserve data and cache

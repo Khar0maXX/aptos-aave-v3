@@ -16,20 +16,20 @@ pnpm run generate
 
 The latter command will generate a .env file with some randomly generated accounts and put that into the root of the project directory. If need be, you can always modify the .env file and adjust the private keys in there.
 
-## 2. Start the test environment
+## 3. Start the test environment
 
 ```bash
 pnpm run start
 ```
 
-## 3. Stop the test environment
+## 4. Stop the test environment
 
 ```bash
 pnpm run stop
 ```
 
-## 4. In case you want to intiliaze the tets environment with assets, reservers etc. you can run the following commands to do that
+## 5. In case you want to intiliaze the tets environment with assets, reservers etc. you can run the following commands to do that
 
 ```bash
-cd ../test-suites && pnpm i && pnpm run deploy:init-data && pnpm run deploy:core-operations
+cd ../aave-test-suite && pnpm run deploy:init-data && pnpm run deploy:core-operations
 ```

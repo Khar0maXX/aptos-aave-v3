@@ -34,9 +34,13 @@ module aave_config::user_config {
     // Structs
     /// @notice Structure that stores the user configuration as a bitmap
     struct UserConfigurationMap has copy, store, drop {
-        /// @dev Bitmap of the users collaterals and borrows. It is divided in pairs of bits, one pair per asset.
-        /// The first bit indicates if an asset is used as collateral by the user, the second whether an
-        /// asset is borrowed by the user.
+        /// @dev Bitmap of the user's collaterals and borrows. It is divided in pairs of bits, one pair per asset.
+        /// For each asset, the even bit (2*i) indicates if the asset is borrowed by the user,
+        /// and the odd bit (2*i + 1) indicates if the asset is used as collateral by the user.
+        /// Each asset's borrow and collateral status are stored in two consecutive bits in the bitmap:
+        /// - the right bit (even) for borrowing (0,2,4),
+        /// - the left bit (odd) for collateral (1,3,5).
+        /// This layout matches the Aave V3 EVM implementation.
         data: u256
     }
 
@@ -119,7 +123,7 @@ module aave_config::user_config {
             reserve_index < reserve_config::get_max_reserves_count(),
             error_config::get_einvalid_reserve_index()
         );
-        (self.data >> ((reserve_index << 1) as u8) + 1)
+        (self.data >> ((reserve_index << 1) + 1 as u8))
         & 1 != 0
     }
 

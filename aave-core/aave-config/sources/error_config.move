@@ -101,8 +101,6 @@ module aave_config::error_config {
     const ELTV_VALIDATION_FAILED: u64 = 57;
     /// @notice Inconsistent eMode category
     const EINCONSISTENT_EMODE_CATEGORY: u64 = 58;
-    /// @notice Price oracle sentinel validation failed
-    const EPRICE_ORACLE_SENTINEL_CHECK_FAILED: u64 = 59;
     /// @notice Asset is not borrowable in isolation mode
     const EASSET_NOT_BORROWABLE_IN_ISOLATION: u64 = 60;
     /// @notice Reserve has already been initialized
@@ -188,7 +186,7 @@ module aave_config::error_config {
     /// @notice Account is not the acl's owner
     const ENOT_ACL_OWNER: u64 = 1001;
     /// @notice Account is missing role
-    const EROLE_MISSMATCH: u64 = 1002;
+    const EROLE_MISMATCH: u64 = 1002;
     /// @notice Can only renounce roles for self
     const EROLE_CAN_ONLY_RENOUNCE_SELF: u64 = 1003;
     /// @notice Roles not initialized
@@ -208,7 +206,7 @@ module aave_config::error_config {
     /// @notice No asset feed for the given asset
     const E_NO_ASSET_FEED: u64 = 1203;
     /// @notice Returned batch of prices equals the requested assets
-    const E_ORACLE_BENCHMARK_LENGHT_MISMATCH: u64 = 1204;
+    const E_ORACLE_BENCHMARK_LENGTH_MISMATCH: u64 = 1204;
     /// @notice Returned oracle price is negative
     const E_NEGATIVE_ORACLE_PRICE: u64 = 1205;
     /// @notice Returned oracle price is zero
@@ -233,6 +231,30 @@ module aave_config::error_config {
     const E_CAP_LOWER_THAN_ACTUAL_PRICE: u64 = 1215;
     /// @notice The asset does not have a price cap
     const E_ASSET_NO_PRICE_CAP: u64 = 1216;
+    /// @notice The oracle price is stale
+    const ESTALE_ORACLE_PRICE: u64 = 1217;
+    /// @notice The oracle price timestamp is in the future
+    const EORACLE_PRICE_TIMESTAMP_IN_FUTURE: u64 = 1218;
+    /// @notice The max asset price age of the asset is zero
+    const E_ZERO_ORACLE_MAX_ASSET_PRICE_AGE: u64 = 1219;
+    /// The snapshot ratio is zero
+    const E_ZERO_SNAPSHOT_RATIO: u64 = 1220;
+    /// The timestamp ratio is invalid
+    const E_INVALID_RATIO_TIMESTAMP: u64 = 1221;
+    /// The snapshot may overflow very soon
+    const E_SNAPSHOT_OVERFLOW: u64 = 1222;
+    /// The ratio decimals is zero
+    const E_ZERO_RATIO_DECIMALS: u64 = 1223;
+    /// The adapter type that is being updated is not the one stored
+    const E_MISMATCH_ADAPTER_TYPE: u64 = 1224;
+    /// The growth rate is invalid
+    const E_INVALID_GROWTH_RATE: u64 = 1225;
+    /// The snapshot delay is invalid
+    const E_INVALID_SNAPSHOT_DELAY: u64 = 1226;
+    /// The snapshot ratio is invalid
+    const E_INVALID_SNAPSHOT_RATIO: u64 = 1227;
+    /// The snapshot timestamp is invalid
+    const E_INVALID_SNAPSHOT_TIMESTAMP: u64 = 1228;
 
     // aave_rate module error code range from 1301 to 1400.
     /// @notice Account is not the rate's owner
@@ -250,7 +272,7 @@ module aave_config::error_config {
     /// @notice Mismatch of reserves count in storage
     const ERESERVES_STORAGE_COUNT_MISMATCH: u64 = 1403;
     /// @notice The person who signed must be consistent with on_behalf_of
-    const ESIGNER_AND_ON_BEHALF_OF_NO_SAME: u64 = 1404;
+    const ESIGNER_AND_ON_BEHALF_OF_NOT_SAME: u64 = 1404;
     /// @notice Account does not exist
     const EACCOUNT_DOES_NOT_EXIST: u64 = 1405;
     /// @notice Flashloan payer is different from the flashloan receiver
@@ -292,7 +314,7 @@ module aave_config::error_config {
     /// @notice Incentives controller mismatch
     const EINCENTIVES_CONTROLLER_MISMATCH: u64 = 3002;
     /// @notice Claimer is not authorized to make the reward claim
-    const EUNAHTHORIZED_CLAIMER: u64 = 3003;
+    const EUNAUTHORIZED_CLAIMER: u64 = 3003;
     /// @notice Reward index overflow
     const EREWARD_INDEX_OVERFLOW: u64 = 3004;
     /// @notice Invalid config data used in rewards controller / distributor
@@ -783,6 +805,60 @@ module aave_config::error_config {
         EASSET_NOT_LISTED
     }
 
+    /// @notice Returns the error code for zero snapshot ratio
+    /// @return Error code as u64
+    public fun get_ezero_snapshot_ratio(): u64 {
+        E_ZERO_SNAPSHOT_RATIO
+    }
+
+    /// @notice Returns the error code for invalid snapshot ratio
+    /// @return Error code as u64
+    public fun get_einvalid_ratio_timestamp(): u64 {
+        E_INVALID_RATIO_TIMESTAMP
+    }
+
+    /// @notice Returns the error code for snapshot overflow
+    /// @return Error code as u64
+    public fun get_esnapshot_overflow(): u64 {
+        E_SNAPSHOT_OVERFLOW
+    }
+
+    /// @notice Returns the error code for zero ration decimals
+    /// @return Error code as u64
+    public fun get_ezero_ratio_decimals(): u64 {
+        E_ZERO_RATIO_DECIMALS
+    }
+
+    /// @notice Returns the error code for a mismatch on the adapter type
+    /// @return Error code as u64
+    public fun get_emismatch_adapter_type(): u64 {
+        E_MISMATCH_ADAPTER_TYPE
+    }
+
+    /// @notice Returns the error code for invalid growth rate
+    /// @return Error code as u64
+    public fun get_einvalid_growth_rate(): u64 {
+        E_INVALID_GROWTH_RATE
+    }
+
+    /// @notice Returns the error code for invalid snapshot delay
+    /// @return Error code as u64
+    public fun get_einvalid_snapshot_delay(): u64 {
+        E_INVALID_SNAPSHOT_DELAY
+    }
+
+    /// @notice Returns the error code for invalid snapshot ratio
+    /// @return Error code as u64
+    public fun get_einvalid_snapshot_ratio(): u64 {
+        E_INVALID_SNAPSHOT_RATIO
+    }
+
+    /// @notice Returns the error code for invalid snapshot timestamp
+    /// @return Error code as u64
+    public fun get_einvalid_snapshot_timestamp(): u64 {
+        E_INVALID_SNAPSHOT_TIMESTAMP
+    }
+
     /// @notice Returns the error code for invalid optimal usage ratio
     /// @return Error code as u64
     public fun get_einvalid_optimal_usage_ratio(): u64 {
@@ -827,8 +903,8 @@ module aave_config::error_config {
 
     /// @notice Returns the error code for role mismatch
     /// @return Error code as u64
-    public fun get_erole_missmatch(): u64 {
-        EROLE_MISSMATCH
+    public fun get_erole_mismatch(): u64 {
+        EROLE_MISMATCH
     }
 
     /// @notice Returns the error code for role can only renounce self
@@ -947,8 +1023,8 @@ module aave_config::error_config {
 
     /// @notice Returns the error code for oracle benchmark length mismatch
     /// @return Error code as u64
-    public fun get_eoralce_benchmark_length_mistmatch(): u64 {
-        E_ORACLE_BENCHMARK_LENGHT_MISMATCH
+    public fun get_eoralce_benchmark_length_mismatch(): u64 {
+        E_ORACLE_BENCHMARK_LENGTH_MISMATCH
     }
 
     /// @notice Returns the error code for negative oracle price
@@ -971,13 +1047,13 @@ module aave_config::error_config {
 
     /// @notice Returns the error code for requested feed ids assets mismatch
     /// @return Error code as u64
-    public fun get_erequested_feed_ids_assets_mistmatch(): u64 {
+    public fun get_erequested_feed_ids_assets_mismatch(): u64 {
         E_REQUESTED_FEED_IDS_ASSETS_MISMATCH
     }
 
     /// @notice Returns the error code for requested custom prices assets mismatch
     /// @return Error code as u64
-    public fun get_erequested_custom_prices_assets_mistmatch(): u64 {
+    public fun get_erequested_custom_prices_assets_mismatch(): u64 {
         E_REQUESTED_CUSTOM_PRICES_ASSETS_MISMATCH
     }
 
@@ -997,6 +1073,24 @@ module aave_config::error_config {
     /// @return Error code as u64
     public fun get_easset_no_price_cap(): u64 {
         E_ASSET_NO_PRICE_CAP
+    }
+
+    /// @notice Returns the error code for stale oracle price
+    /// @return Error code as u64
+    public fun get_estale_oracle_price(): u64 {
+        ESTALE_ORACLE_PRICE
+    }
+
+    /// @notice Returns the error code for oracle price timestamp being in the future
+    /// @return Error code as u64
+    public fun get_eoracle_price_timestamp_in_future(): u64 {
+        EORACLE_PRICE_TIMESTAMP_IN_FUTURE
+    }
+
+    /// @notice Returns the error code for oracle max asset price age being zero
+    /// @return Error code as u64
+    public fun get_ezero_oracle_max_asset_price_age(): u64 {
+        E_ZERO_ORACLE_MAX_ASSET_PRICE_AGE
     }
 
     /// @notice Returns the error code for different caller on behalf of
@@ -1019,8 +1113,8 @@ module aave_config::error_config {
 
     /// @notice Returns the error code for signer and on behalf of not same
     /// @return Error code as u64
-    public fun get_esigner_and_on_behalf_of_no_same(): u64 {
-        ESIGNER_AND_ON_BEHALF_OF_NO_SAME
+    public fun get_esigner_and_on_behalf_of_not_same(): u64 {
+        ESIGNER_AND_ON_BEHALF_OF_NOT_SAME
     }
 
     /// @notice Returns the error code for account does not exist
@@ -1031,7 +1125,7 @@ module aave_config::error_config {
 
     /// @notice Returns the error code for flashloan payer not receiver
     /// @return Error code as u64
-    public fun get_flashloan_payer_not_receiver(): u64 {
+    public fun get_eflashloan_payer_not_receiver(): u64 {
         EFLASHLOAN_PAYER_NOT_RECEIVER
     }
 
@@ -1146,7 +1240,7 @@ module aave_config::error_config {
     /// @notice Returns the error code for unauthorized claimer
     /// @return Error code as u64
     public fun get_eunauthorized_claimer(): u64 {
-        EUNAHTHORIZED_CLAIMER
+        EUNAUTHORIZED_CLAIMER
     }
 
     /// @notice Returns the error code for reward index overflow

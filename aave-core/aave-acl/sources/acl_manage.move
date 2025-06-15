@@ -36,7 +36,8 @@ module aave_acl::acl_manage {
     use std::string::{Self, String};
     use aptos_std::smart_table::{Self, SmartTable};
     use aptos_framework::event;
-
+    use aptos_framework::object;
+    use aptos_framework::object::ObjectCore;
     use aave_config::error_config;
 
     // Error constants
@@ -132,6 +133,14 @@ module aave_acl::acl_manage {
         };
         let role_data = smart_table::borrow(&role_res.acl_instance, role);
         acl::contains(&role_data.members, user)
+    }
+
+    #[view]
+    /// @notice Checks if the address is the default admin (i.e., a super-admin)
+    /// @param admin Address to check
+    /// @return Boolean indicating if the address is the default admin
+    public fun is_default_admin(admin: address): bool acquires Roles {
+        has_role(default_admin_role(), admin)
     }
 
     #[view]
@@ -303,11 +312,13 @@ module aave_acl::acl_manage {
     /// @param admin Signer with admin role permissions
     /// @param role The role to grant
     /// @param user Address to grant the role to
+    /// @dev Errors if the 0x0 address is being used to be granted a role
     /// @dev If `account` had not been already granted `role`, emits a {RoleGranted} event
     /// @dev Requirements: the caller must have ``role``'s admin role
     public entry fun grant_role(
         admin: &signer, role: String, user: address
     ) acquires Roles {
+        assert!(user != @0x0, error_config::get_ezero_address_not_valid());
         let admin_address = signer::address_of(admin);
         only_role(get_role_admin(role), admin_address);
         grant_role_internal(admin, role, user);
@@ -316,17 +327,10 @@ module aave_acl::acl_manage {
     /// @notice Revokes `role` from the calling account
     /// @param admin Signer revoking their own role
     /// @param role The role to renounce
-    /// @param user Address to renounce the role from (must be same as admin)
     /// @dev If the calling account had been granted `role`, emits a {RoleRevoked} event
     /// @dev Requirements: the caller must be `account`
-    public entry fun renounce_role(
-        admin: &signer, role: String, user: address
-    ) acquires Roles {
-        assert!(
-            signer::address_of(admin) == user,
-            error_config::get_erole_can_only_renounce_self()
-        );
-        revoke_role_internal(admin, role, user);
+    public entry fun renounce_role(admin: &signer, role: String) acquires Roles {
+        revoke_role_internal(admin, role, signer::address_of(admin));
     }
 
     /// @notice Revokes `role` from `account`
@@ -341,6 +345,19 @@ module aave_acl::acl_manage {
         let admin_address = signer::address_of(admin);
         only_role(get_role_admin(role), admin_address);
         revoke_role_internal(admin, role, user);
+    }
+
+    /// @notice Adds a default admin role to the specified address
+    /// @param admin Signer with permissions to grant roles
+    /// @param user Address to grant the default admin role to
+    public entry fun add_default_admin(admin: &signer, user: address) acquires Roles {
+        grant_role(admin, default_admin_role(), user);
+    }
+
+    /// @notice Renounce the default admin role
+    /// @param admin Signer with permissions to grant roles
+    public entry fun renounce_default_admin(admin: &signer) acquires Roles {
+        renounce_role(admin, default_admin_role());
     }
 
     /// @notice Adds a pool admin role to the specified address
@@ -490,21 +507,34 @@ module aave_acl::acl_manage {
     // Private/Internal functions
     /// @dev Initializes the module and grants the default admin role to the admin signer
     /// @param admin Signer that will be granted the default admin role
-    fun init_module(admin: &signer) acquires Roles {
+    fun init_module(admin: &signer) {
         let admin_address = signer::address_of(admin);
         assert!(admin_address == @aave_acl, error_config::get_enot_acl_owner());
-        move_to(
-            admin,
-            Roles { acl_instance: smart_table::new() }
-        );
-        grant_role_internal(admin, default_admin_role(), admin_address);
+
+        let owner =
+            if (object::is_object(admin_address)) {
+                // add the object owner as super_admin if we deploy on an object model
+                object::owner(object::address_to_object<ObjectCore>(admin_address))
+            } else {
+                // add the account address as super admin if we deploy on an account model
+                admin_address
+            };
+
+        let members = acl::empty();
+        acl::add(&mut members, owner);
+        let role_data = RoleData { members, admin_role: default_admin_role() };
+
+        let roles = Roles { acl_instance: smart_table::new() };
+        smart_table::add(&mut roles.acl_instance, default_admin_role(), role_data);
+
+        move_to(admin, roles);
     }
 
     /// @dev Checks if the user has the specified role and aborts if not
     /// @param role The role to check
     /// @param user Address to check for the role
     fun only_role(role: String, user: address) acquires Roles {
-        assert!(has_role(role, user), error_config::get_erole_missmatch());
+        assert!(has_role(role, user), error_config::get_erole_mismatch());
     }
 
     /// @dev Internal function to grant a role to a user
@@ -574,7 +604,7 @@ module aave_acl::acl_manage {
     #[test_only]
     /// @dev Initializes the module for testing
     /// @param admin Signer that will be granted the default admin role
-    public fun test_init_module(admin: &signer) acquires Roles {
+    public fun test_init_module(admin: &signer) {
         init_module(admin);
     }
 

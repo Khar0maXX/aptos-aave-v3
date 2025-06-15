@@ -113,7 +113,7 @@ module aave_pool::default_reserve_interest_rate_strategy {
     /// @notice Returns the full InterestRateDataRay object for the given reserve, in bps
     /// @param reserve The reserve to get the data of
     /// @return The InterestRateData object for the given reserve
-    public fun get_reserve_interest_rate_strategy_bsp(
+    public fun get_reserve_interest_rate_strategy_bps(
         reserve: address
     ): InterestRateData acquires ReserveInterestRateStrategyMap {
         let rate_strategy_map = get_reserve_interest_rate_strategy_map_ref();
