@@ -755,7 +755,7 @@ module aave_data::v1_values {
         smart_table::add(
             &mut price_feeds_mainnet,
             string::utf8(SUSDE_ASSET),
-            x"01f4b4e2cd000332000000000000000000000000000000000000000000000000"
+            x"01532c3a7e000332000000000000000000000000000000000000000000000000"
         );
         price_feeds_mainnet
     }
@@ -782,7 +782,7 @@ module aave_data::v1_values {
         smart_table::add(
             &mut asset_max_price_ages_testnet,
             string::utf8(SUSDE_ASSET),
-            45 * 60 // 45 minutes
+            30 * 60 // 30 minutes
         );
         asset_max_price_ages_testnet
     }
@@ -809,7 +809,7 @@ module aave_data::v1_values {
         smart_table::add(
             &mut asset_max_price_ages_mainnet,
             string::utf8(SUSDE_ASSET),
-            45 * 60 // 45 minutes
+            30 * 60 // 30 minutes
         );
         asset_max_price_ages_mainnet
     }
