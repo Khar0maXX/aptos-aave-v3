@@ -7,13 +7,13 @@
         This is the official Aptos version of the Aave V3 Protocol.
     </p>
     <p align="center">
-        <a href="https://github.com/aave/aptos-aave-v3/actions/workflows/unit_tests.yml" style="text-decoration: none; ">
+        <a href="https://github.com/aave/aptos-aave-v3/actions/workflows/unit_tests.yml">
             <img src="https://github.com/aave/aptos-aave-v3/actions/workflows/unit_tests.yml/badge.svg" alt="CI">
         </a>
-        <a href="https://codecov.io/gh/aave/aptos-aave-v3" style="text-decoration: none;">
-          <img src="https://codecov.io/gh/aave/aptos-aave-v3/branch/main/graph/badge.svg?token=OSHPA0N2BQ" alt="Coverage"/>
+        <a href="https://codecov.io/gh/aave/aptos-aave-v3">
+          <img src="https://codecov.io/gh/aave/aptos-aave-v3/graph/badge.svg?token=OSHPA0N2BQ" alt="Coverage"/>
         </a>
-        <a href="https://github.com/aave/aptos-aave-v3/blob/main/LICENSE" style="text-decoration: none;">
+        <a href="https://github.com/aave/aptos-aave-v3/blob/main/LICENSE">
           <img src="https://img.shields.io/badge/license-MIT-007EC7.svg" alt="License"/>
         </a>
     </p>
