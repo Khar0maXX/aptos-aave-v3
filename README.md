@@ -187,6 +187,27 @@ Docs will be generated under each package's `doc/` directory.
 
 ---
 
+## 🧰 TypeScript SDK
+
+A TypeScript SDK is available for interacting with the Aave V3 Protocol on Aptos directly from your applications.
+
+### 📦 Install via npm
+
+```bash
+pnpm add @aave/aave-v3-aptos-ts-sdk
+# or
+npm install @aave/aave-v3-aptos-ts-sdk
+```
+
+### 📘 Explore the SDK
+
+👉 **[View on npm](https://www.npmjs.com/package/@aave/aave-v3-aptos-ts-sdk)**
+Browse available functions, types, and usage examples.
+
+📖 For full usage details, please refer to the [README documentation](https://www.npmjs.com/package/@aave/aave-v3-aptos-ts-sdk#readme) on the npm package page.
+
+---
+
 ## 🔐 Security Audits
 
 All audit reports related to Aave's Move implementation on Aptos are stored in the `/audits` directory at the root of this repository.
@@ -195,9 +216,12 @@ All audit reports related to Aave's Move implementation on Aptos are stored in t
 
 ```bash
 /audits
-├── Aave Aptos Core V3.0.2 Report.pdf
-├── Aave Aptos Core V3.1-V3.3 Report.pdf
-└── Aave Aptos Periphery Report.pdf
+├── Certora Aave Aptos Core V3.0.2 Report.pdf
+├── Certora Aave Aptos Core V3.1-V3.3 Report.pdf
+└── Certora Aave Aptos Periphery V3.0.2 Report.pdf
+├── Spearbit Aave Aptos Core V3.0.2 Report.pdf
+├── Spearbit Aave Aptos Core V3.1-V3.3 Report.pdf
+└── Spearbit Aave Aptos Periphery V3.0.2 Report.pdf
 ```
 
 📂 [Browse Audit Reports](/audits)
