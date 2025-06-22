@@ -89,8 +89,7 @@ jobs:
           echo $! > aptos_serve_pid.txt
 
       - name: Wait for Aptos Local Testnet to be ready
-        run: |
-          sleep 20
+        run: sleep 20
 
       - name: Set Local Aptos Workspace Config
         run: make set-workspace-config

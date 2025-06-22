@@ -209,18 +209,6 @@ module aave_oracle::oracle {
                     vector[asset, *option::borrow(&cap_info.mapped_asset_ratio_multiplier)]
                 );
 
-                // Below is CL's message on: June 10, 2025
-                // we've confirmed 0x01532c3a7e000332000000000000000000000000000000000000000000000000
-                // is the correct Feed ID for sUSDe/USDe exchange rate,
-                // which now has a heartbeat of 30 minutes
-
-                // Proven by v1_values.move
-                // smart_table::add(
-                //     &mut price_feeds_testnet,
-                //     string::utf8(SUSDE_ASSET),
-                //     x"01532c3a7e000332000000000000000000000000000000000000000000000000"
-                // );
-
                 // It means "underlying_asset_price" is the price of sUSDe/USDe exchange rate
                 // expressed in 18 decimals already
                 let underlying_asset_price = assets_prices[0]; // sUSDe/USDe exchange rate

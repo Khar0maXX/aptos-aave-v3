@@ -767,22 +767,22 @@ module aave_data::v1_values {
         smart_table::add(
             &mut asset_max_price_ages_testnet,
             string::utf8(APT_ASSET),
-            10 * 60 // 10 minutes
+            45 * 60 // 45 minutes
         );
         smart_table::add(
             &mut asset_max_price_ages_testnet,
             string::utf8(USDC_ASSET),
-            10 * 60 // 10 minutes
+            45 * 60 // 45 minutes
         );
         smart_table::add(
             &mut asset_max_price_ages_testnet,
             string::utf8(USDT_ASSET),
-            10 * 60 // 10 minutes
+            45 * 60 // 45 minutes
         );
         smart_table::add(
             &mut asset_max_price_ages_testnet,
             string::utf8(SUSDE_ASSET),
-            30 * 60 // 30 minutes
+            45 * 60 // 45 minutes
         );
         asset_max_price_ages_testnet
     }
@@ -794,22 +794,22 @@ module aave_data::v1_values {
         smart_table::add(
             &mut asset_max_price_ages_mainnet,
             string::utf8(APT_ASSET),
-            10 * 60 // 10 minutes
+            45 * 60 // 45 minutes
         );
         smart_table::add(
             &mut asset_max_price_ages_mainnet,
             string::utf8(USDC_ASSET),
-            10 * 60 // 10 minutes
+            45 * 60 // 45 minutes
         );
         smart_table::add(
             &mut asset_max_price_ages_mainnet,
             string::utf8(USDT_ASSET),
-            10 * 60 // 10 minutes
+            45 * 60 // 45 minutes
         );
         smart_table::add(
             &mut asset_max_price_ages_mainnet,
             string::utf8(SUSDE_ASSET),
-            30 * 60 // 30 minutes
+            45 * 60 // 45 minutes
         );
         asset_max_price_ages_mainnet
     }
