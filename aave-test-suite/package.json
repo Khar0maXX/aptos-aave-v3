@@ -47,7 +47,7 @@
   "author": "AAVE",
   "license": "ISC",
   "dependencies": {
-    "@aave/aave-v3-aptos-ts-sdk": "0.0.50",
+    "@aave/aave-v3-aptos-ts-sdk": "0.0.53",
     "@aptos-labs/aptos-client": "^2.0.0",
     "@aptos-labs/ts-sdk": "2.0.1",
     "@ethersproject/bignumber": "^5.8.0",
