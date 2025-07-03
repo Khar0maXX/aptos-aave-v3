@@ -876,7 +876,8 @@ module aave_data::v1_values {
             ReserveConfig {
                 base_ltv_as_collateral: (58 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_threshold: (63 * math_utils::get_percentage_factor()) / 100, // ok
-                liquidation_bonus: (10 * math_utils::get_percentage_factor()) / 100, // ok
+                liquidation_bonus: math_utils::get_percentage_factor()
+                    + (10 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_protocol_fee: (10 * math_utils::get_percentage_factor())
                     / 100, // ok
                 borrowing_enabled: true, // ok
@@ -896,7 +897,8 @@ module aave_data::v1_values {
             ReserveConfig {
                 base_ltv_as_collateral: (75 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_threshold: (78 * math_utils::get_percentage_factor()) / 100, // ok
-                liquidation_bonus: (5 * math_utils::get_percentage_factor()) / 100, // ok
+                liquidation_bonus: math_utils::get_percentage_factor()
+                    + (5 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_protocol_fee: (10 * math_utils::get_percentage_factor())
                     / 100, // ok
                 borrowing_enabled: true, // ok
@@ -916,7 +918,8 @@ module aave_data::v1_values {
             ReserveConfig {
                 base_ltv_as_collateral: (75 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_threshold: (78 * math_utils::get_percentage_factor()) / 100, // ok
-                liquidation_bonus: (5 * math_utils::get_percentage_factor()) / 100, // ok
+                liquidation_bonus: math_utils::get_percentage_factor()
+                    + (5 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_protocol_fee: (10 * math_utils::get_percentage_factor())
                     / 100, // ok
                 borrowing_enabled: true, // ok
@@ -936,7 +939,8 @@ module aave_data::v1_values {
             ReserveConfig {
                 base_ltv_as_collateral: (65 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_threshold: (75 * math_utils::get_percentage_factor()) / 100, // ok
-                liquidation_bonus: (85 * math_utils::get_percentage_factor()) / 1000, // ok
+                liquidation_bonus: math_utils::get_percentage_factor()
+                    + (85 * math_utils::get_percentage_factor()) / 1000, // ok
                 liquidation_protocol_fee: (10 * math_utils::get_percentage_factor())
                     / 100, // ok
                 borrowing_enabled: true, // ok
@@ -963,7 +967,8 @@ module aave_data::v1_values {
             ReserveConfig {
                 base_ltv_as_collateral: (58 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_threshold: (63 * math_utils::get_percentage_factor()) / 100, // ok
-                liquidation_bonus: (10 * math_utils::get_percentage_factor()) / 100, // ok
+                liquidation_bonus: math_utils::get_percentage_factor()
+                    + (10 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_protocol_fee: (10 * math_utils::get_percentage_factor())
                     / 100, // ok
                 borrowing_enabled: true, // ok
@@ -983,7 +988,8 @@ module aave_data::v1_values {
             ReserveConfig {
                 base_ltv_as_collateral: (75 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_threshold: (78 * math_utils::get_percentage_factor()) / 100, // ok
-                liquidation_bonus: (5 * math_utils::get_percentage_factor()) / 100, // ok
+                liquidation_bonus: math_utils::get_percentage_factor()
+                    + (5 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_protocol_fee: (10 * math_utils::get_percentage_factor())
                     / 100, // ok
                 borrowing_enabled: true, // ok
@@ -1003,7 +1009,8 @@ module aave_data::v1_values {
             ReserveConfig {
                 base_ltv_as_collateral: (75 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_threshold: (78 * math_utils::get_percentage_factor()) / 100, // ok
-                liquidation_bonus: (5 * math_utils::get_percentage_factor()) / 100, // ok
+                liquidation_bonus: math_utils::get_percentage_factor()
+                    + (5 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_protocol_fee: (10 * math_utils::get_percentage_factor())
                     / 100, // ok
                 borrowing_enabled: true, // ok
@@ -1023,7 +1030,8 @@ module aave_data::v1_values {
             ReserveConfig {
                 base_ltv_as_collateral: (65 * math_utils::get_percentage_factor()) / 100, // ok
                 liquidation_threshold: (75 * math_utils::get_percentage_factor()) / 100, // ok
-                liquidation_bonus: (85 * math_utils::get_percentage_factor()) / 1000, // ok
+                liquidation_bonus: math_utils::get_percentage_factor()
+                    + (85 * math_utils::get_percentage_factor()) / 1000, // ok
                 liquidation_protocol_fee: (10 * math_utils::get_percentage_factor())
                     / 100, // ok
                 borrowing_enabled: false, // ok
