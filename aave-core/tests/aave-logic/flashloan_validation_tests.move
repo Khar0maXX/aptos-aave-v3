@@ -3,6 +3,7 @@ module aave_pool::flashloan_validation_tests {
 
     use std::signer;
     use std::string::utf8;
+    use std::vector;
     use aave_config::reserve_config;
     use aave_pool::supply_logic;
     use aave_pool::flashloan_logic;
@@ -779,5 +780,59 @@ module aave_pool::flashloan_validation_tests {
 
         // ----> flashloan user repays flashloan + premium
         flashloan_logic::pay_flash_loan_simple(usre1, flashloan_receipt);
+    }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            usre1 = @0x41
+        )
+    ]
+    // validate_flashloan() with The number of assets exceeds the maximum limit
+    #[expected_failure(abort_code = 49, location = aave_pool::validation_logic)]
+    fun test_validate_flashloan_with_assets_exceeds_maximum_limit(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        usre1: &signer
+    ) {
+        let user1_address = signer::address_of(usre1);
+
+        init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+
+        // user1 flashloan 1000 u_1 token from the pool
+        let assets = vector[underlying_u1_token_address];
+        let amounts = vector[1000];
+        let interest_rate_modes = vector[2];
+        for (i in 0..reserve_config::get_max_reserves_count()) {
+            vector::push_back(&mut assets, underlying_u1_token_address);
+            vector::push_back(&mut amounts, 1000);
+            vector::push_back(&mut interest_rate_modes, 2);
+        };
+
+        let flashloan_receipts =
+            flashloan_logic::flash_loan(
+                usre1,
+                user1_address,
+                assets,
+                amounts,
+                vector[0, 2],
+                user1_address,
+                0
+            );
+
+        flashloan_logic::pay_flash_loan_complex(usre1, flashloan_receipts);
     }
 }

@@ -32,6 +32,11 @@ module aave_pool::validation_logic {
             vector::length(assets) > 0,
             error_config::get_einconsistent_flashloan_params()
         );
+        // ensure that the number of assets is less than the maximum allowed reserves
+        assert!(
+            vector::length(assets) < (reserve_config::get_max_reserves_count() as u64),
+            error_config::get_einconsistent_flashloan_params()
+        );
         // ensure arguments consistency
         assert!(
             vector::length(assets) == vector::length(amounts)
