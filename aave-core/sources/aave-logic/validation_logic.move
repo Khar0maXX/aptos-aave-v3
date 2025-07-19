@@ -70,6 +70,8 @@ module aave_pool::validation_logic {
     public fun validate_flashloan_simple(
         reserve_data: Object<ReserveData>, amount: u256
     ) {
+        assert!(amount != 0, error_config::get_einvalid_amount());
+
         let reserve_configuration =
             pool::get_reserve_configuration_by_reserve_data(reserve_data);
         let (is_active, _, _, is_paused) =
