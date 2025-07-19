@@ -45,7 +45,7 @@ module aave_pool::validation_logic {
             error_config::get_einconsistent_flashloan_params()
         );
 
-        // Use SimpleMap for O(n) uniqueness validation instead of O(n²) nested loops
+        // Use SimpleMap for O(n) uniqueness validation instead of O(n^2) nested loops
         let seen_assets = simple_map::new<address, bool>();
         for (i in 0..vector::length(assets)) {
             let asset = *vector::borrow(assets, i);
