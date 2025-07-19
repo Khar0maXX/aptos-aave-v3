@@ -898,4 +898,52 @@ module aave_pool::flashloan_validation_tests {
 
         flashloan_logic::pay_flash_loan_complex(usre1, flashloan_receipts);
     }
+
+    #[
+        test(
+            aave_pool = @aave_pool,
+            aave_role_super_admin = @aave_acl,
+            aave_std = @std,
+            underlying_tokens_admin = @aave_mock_underlyings,
+            usre1 = @0x41
+        )
+    ]
+    // validate_flashloan() with amount is zero (revert expected)
+    #[expected_failure(abort_code = 26, location = aave_pool::validation_logic)]
+    fun test_validate_flashloan_with_amount_is_zero(
+        aave_pool: &signer,
+        aave_role_super_admin: &signer,
+        aave_std: &signer,
+        underlying_tokens_admin: &signer,
+        usre1: &signer
+    ) {
+        let user1_address = signer::address_of(usre1);
+
+        init_reserves(
+            aave_pool,
+            aave_role_super_admin,
+            aave_std,
+            underlying_tokens_admin
+        );
+
+        let underlying_u1_token_address =
+            mock_underlying_token_factory::token_address(utf8(b"U_1"));
+
+        // user1 flashloan 1000 u_1 token from the pool
+        let assets = vector[underlying_u1_token_address];
+        let amounts = vector[0];
+        let interest_rate_modes = vector[2];
+        let flashloan_receipts =
+            flashloan_logic::flash_loan(
+                usre1,
+                user1_address,
+                assets,
+                amounts,
+                interest_rate_modes,
+                user1_address,
+                0
+            );
+
+        flashloan_logic::pay_flash_loan_complex(usre1, flashloan_receipts);
+    }
 }
