@@ -324,9 +324,27 @@ module aave_pool::flashloan_validation_tests {
         let underlying_u1_token_address =
             mock_underlying_token_factory::token_address(utf8(b"U_1"));
 
+        // mint 1000000000 u_1 token to user1
+        mock_underlying_token_factory::mint(
+            underlying_tokens_admin,
+            user1_address,
+            (convert_to_currency_decimals(underlying_u1_token_address, 1000000000) as u64),
+            underlying_u1_token_address
+        );
+
+        let supplied_amount =
+            convert_to_currency_decimals(underlying_u1_token_address, 1000);
+        supply_logic::supply(
+            usre1,
+            underlying_u1_token_address,
+            supplied_amount,
+            user1_address,
+            0
+        );
+
         // user1 flashloan 1000 u_1 token from the pool
         let assets = vector[underlying_u1_token_address, underlying_u1_token_address];
-        let amounts = vector[1000, 222];
+        let amounts = vector[100, 200];
         let flashloan_receipts =
             flashloan_logic::flash_loan(
                 usre1,
