@@ -4,6 +4,7 @@
 module aave_pool::validation_logic {
     // imports
     use std::vector;
+    use aptos_std::simple_map;
     use aptos_framework::timestamp;
     use aptos_framework::object::Object;
     use aave_config::error_config;
@@ -32,21 +33,31 @@ module aave_pool::validation_logic {
             vector::length(assets) > 0,
             error_config::get_einconsistent_flashloan_params()
         );
+        // ensure that the number of assets is less than the maximum allowed reserves
+        assert!(
+            vector::length(assets) < (reserve_config::get_max_reserves_count() as u64),
+            error_config::get_einconsistent_flashloan_params()
+        );
         // ensure arguments consistency
         assert!(
             vector::length(assets) == vector::length(amounts)
                 && vector::length(assets) == vector::length(interest_rate_modes),
             error_config::get_einconsistent_flashloan_params()
         );
+
+        // Use SimpleMap for O(n) uniqueness validation instead of O(n^2) nested loops
+        let seen_assets = simple_map::new<address, bool>();
         for (i in 0..vector::length(assets)) {
             let asset = *vector::borrow(assets, i);
-            for (j in (i + 1)..vector::length(assets)) {
-                let asset_j = *vector::borrow(assets, j);
-                assert!(
-                    asset != asset_j,
-                    error_config::get_einconsistent_flashloan_params()
-                );
-            };
+            // Check for duplicate assets in O(1) average time
+            assert!(
+                !simple_map::contains_key(&seen_assets, &asset),
+                error_config::get_einconsistent_flashloan_params()
+            );
+
+            // Add asset to seen set in O(1) average time
+            simple_map::add(&mut seen_assets, asset, true);
+
             let reserve_data = pool::get_reserve_data(asset);
             let amount = *vector::borrow(amounts, i);
             validate_flashloan_simple(reserve_data, amount);
@@ -59,6 +70,8 @@ module aave_pool::validation_logic {
     public fun validate_flashloan_simple(
         reserve_data: Object<ReserveData>, amount: u256
     ) {
+        assert!(amount != 0, error_config::get_einvalid_amount());
+
         let reserve_configuration =
             pool::get_reserve_configuration_by_reserve_data(reserve_data);
         let (is_active, _, _, is_paused) =
