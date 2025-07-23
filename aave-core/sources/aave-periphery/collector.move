@@ -95,7 +95,7 @@ module aave_pool::collector {
     /// @param asset The address of the asset to withdraw
     /// @param receiver The address that will receive the withdrawn assets
     /// @param amount The amount to withdraw
-    public fun withdraw(
+    public entry fun withdraw(
         sender: &signer,
         asset: address,
         receiver: address,
