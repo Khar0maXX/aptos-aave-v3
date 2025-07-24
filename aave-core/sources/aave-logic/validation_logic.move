@@ -299,14 +299,16 @@ module aave_pool::validation_logic {
             let total_debt =
                 isolation_mode_total_debt
                     + (
-                        amount
-                            / math_utils::pow(
+                        math_utils::ceil_div(
+                            amount,
+                            math_utils::pow(
                                 10,
                                 (
                                     reserve_decimals
                                         - reserve_config::get_debt_ceiling_decimals()
                                 )
                             )
+                        )
                     );
             assert!(
                 total_debt <= isolation_mode_debt_ceiling,
