@@ -130,6 +130,14 @@ module aave_pool::drop_reserve_remaining_assets_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_token_address, true
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_token_address, true
+        );
+
         // User2 borrows 500 tokens
         let borrow_amount = 500;
         borrow_logic::borrow(
@@ -409,6 +417,14 @@ module aave_pool::drop_reserve_remaining_assets_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_token_address, true
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_token_address, true
+        );
+
         let borrow_amount = 500;
         borrow_logic::borrow(
             user2,
@@ -658,6 +674,14 @@ module aave_pool::drop_reserve_remaining_assets_tests {
             (user2_supply_amount as u256),
             user2_address,
             0
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_token_address, true
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_token_address, true
         );
 
         let borrow_amount = 500;
@@ -911,6 +935,14 @@ module aave_pool::drop_reserve_remaining_assets_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_token_address, true
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_token_address, true
+        );
+
         let borrow_amount = 500;
         borrow_logic::borrow(
             user2,
@@ -1161,6 +1193,14 @@ module aave_pool::drop_reserve_remaining_assets_tests {
             (user2_supply_amount as u256),
             user2_address,
             0
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_token_address, true
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_token_address, true
         );
 
         let borrow_amount = 500;
