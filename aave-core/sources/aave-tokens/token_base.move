@@ -499,6 +499,9 @@ module aave_pool::token_base {
         index: u256,
         metadata_address: address
     ) acquires ManagedFungibleAsset, TokenBaseState {
+        if (amount == 0) {
+            return;
+        };
         // NOTE: in `ray_div`, while `amount` can be less precision than Ray
         //       precision, `index` must be expressed in Ray precision.
         let amount_scaled = wad_ray_math::ray_div(amount, index);
