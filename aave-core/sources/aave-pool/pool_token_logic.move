@@ -123,6 +123,7 @@ module aave_pool::pool_token_logic {
         amount: u256,
         a_token_address: address
     ) {
+        assert!(amount > 0, error_config::get_einvalid_amount());
         let sender_address = signer::address_of(sender);
         let underlying_asset =
             a_token_factory::get_underlying_asset_address(a_token_address);
