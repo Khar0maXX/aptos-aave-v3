@@ -603,6 +603,10 @@ module aave_pool::pool_token_logic_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, true
+        );
+
         let a_token_address = pool::get_reserve_a_token_address(reserve_data);
         let user1_balance = a_token_factory::balance_of(user1_address, a_token_address);
         assert!(user1_balance == supply_u1_amount, TEST_SUCCESS);
@@ -741,6 +745,10 @@ module aave_pool::pool_token_logic_tests {
             amount_u1_to_deposit,
             depositor_address,
             0
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            depositor, underlying_u1_token_address, true
         );
 
         // set asset price for U_1 token
@@ -886,7 +894,7 @@ module aave_pool::pool_token_logic_tests {
         let collateral_enabled_emitted_events =
             emitted_events<ReserveUsedAsCollateralEnabled>();
         // make sure event of type was emitted
-        assert!(vector::length(&collateral_enabled_emitted_events) == 2, TEST_SUCCESS);
+        assert!(vector::length(&collateral_enabled_emitted_events) == 0, TEST_SUCCESS);
 
         // check BalanceTransfer emitted events
         let balance_transfer_emitted_events = emitted_events<BalanceTransfer>();
@@ -1062,7 +1070,7 @@ module aave_pool::pool_token_logic_tests {
         let collateral_enabled_emitted_events =
             emitted_events<ReserveUsedAsCollateralEnabled>();
         // make sure event of type was emitted
-        assert!(vector::length(&collateral_enabled_emitted_events) == 2, TEST_SUCCESS);
+        assert!(vector::length(&collateral_enabled_emitted_events) == 0, TEST_SUCCESS);
 
         // check BalanceTransfer emitted events
         let balance_transfer_emitted_events = emitted_events<BalanceTransfer>();
@@ -1152,6 +1160,10 @@ module aave_pool::pool_token_logic_tests {
             supply_u1_amount,
             user1_address,
             0
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, true
         );
 
         // user2 deposit 1000 U_2 to the pool
@@ -1315,6 +1327,10 @@ module aave_pool::pool_token_logic_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, true
+        );
+
         // user2 deposit 1000 U_2 to the pool
         let supply_u2_amount =
             convert_to_currency_decimals(underlying_u2_token_address, 1000);
@@ -1435,6 +1451,10 @@ module aave_pool::pool_token_logic_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            user1, underlying_u1_token_address, true
+        );
+
         let reserve_data = pool::get_reserve_data(underlying_u1_token_address);
         let u1_a_token_address = pool::get_reserve_a_token_address(reserve_data);
         let user1_balance = a_token_factory::balance_of(
@@ -1461,7 +1481,7 @@ module aave_pool::pool_token_logic_tests {
         let collateral_enabled_emitted_events =
             emitted_events<ReserveUsedAsCollateralEnabled>();
         // make sure event of type was emitted
-        assert!(vector::length(&collateral_enabled_emitted_events) == 2, TEST_SUCCESS);
+        assert!(vector::length(&collateral_enabled_emitted_events) == 1, TEST_SUCCESS);
 
         // check BalanceTransfer emitted events
         let balance_transfer_emitted_events = emitted_events<BalanceTransfer>();

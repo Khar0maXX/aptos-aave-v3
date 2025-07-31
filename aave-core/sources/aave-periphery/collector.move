@@ -137,4 +137,12 @@ module aave_pool::collector {
     public fun get_collector_name(): vector<u8> {
         COLLECTOR_NAME
     }
+
+    #[test_only]
+    /// @notice Returns the collector resource account signer for testing
+    public fun get_collector_account_with_signer(): signer acquires CollectorData {
+        // derive resource account signer
+        let collector_data = borrow_global<CollectorData>(@aave_pool);
+        account::create_signer_with_capability(&collector_data.resource_account)
+    }
 }
