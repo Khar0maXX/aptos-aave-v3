@@ -530,19 +530,40 @@ module aave_pool::validation_logic {
     }
 
     /// @notice Validates if an asset should be automatically activated as collateral in the following actions: supply,
-    /// transfer, mint unbacked, and liquidate
-    /// @dev This is used to ensure that isolated assets are not enabled as collateral automatically
-    /// @param user_config_map the user configuration map
-    /// @param reserve_config_map The reserve configuration map
-    /// @return True if the asset can be activated as collateral, false otherwise
+    /// transfer and liquidate
+    /// @dev Auto-collateralization is disabled to improve user control and protocol predictability.
+    /// Users must explicitly call set_user_use_reserve_as_collateral to enable collateral.
+    /// @param _user_config_map the user configuration map
+    /// @param _reserve_config_map The reserve configuration map
+    /// @return Always returns false. No asset will be automatically activated as collateral.
     public fun validate_automatic_use_as_collateral(
-        user_config_map: &UserConfigurationMap,
-        reserve_config_map: &ReserveConfigurationMap
+        _user_config_map: &UserConfigurationMap,
+        _reserve_config_map: &ReserveConfigurationMap
     ): bool {
-        if (reserve_config::get_debt_ceiling(reserve_config_map) != 0) {
-            return false
-        };
-        return validate_use_as_collateral(user_config_map, reserve_config_map)
+        // [Code Logic Improvement]
+        //
+        // Background:
+        // - Previous logic allowed assets to be automatically enabled as collateral when supplied, transferred, or liquidated.
+        // - This auto-collateralization could potentially cause user experience issues and account state inconsistencies.
+        //
+        // Improvement:
+        // - Auto-collateralization is now disabled to improve protocol predictability and user control.
+        // - Users must explicitly call set_user_use_reserve_as_collateral to enable collateral for any asset.
+        //
+        // Benefits:
+        // - Provides users with full control over their collateral settings.
+        // - Reduces potential state inconsistencies and improves protocol reliability.
+        // - Slightly increases user operation steps, but greatly improves protocol safety and predictability.
+        //
+        // Original logic (disabled for improvement):
+        // if (reserve_config::get_debt_ceiling(reserve_config_map) != 0) {
+        //     return false
+        // };
+        // return validate_use_as_collateral(user_config_map, reserve_config_map)
+
+        // Auto-collateralization is disabled to improve user control and protocol predictability.
+        // Users must explicitly enable collateral via set_user_use_reserve_as_collateral.
+        false
     }
 
     /// @notice Validates the action of activating the asset as collateral.

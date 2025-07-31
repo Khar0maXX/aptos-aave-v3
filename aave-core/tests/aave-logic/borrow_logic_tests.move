@@ -98,6 +98,10 @@ module aave_pool::borrow_logic_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            supply_user, underlying_u1_token_address, true
+        );
+
         let a_token_address = pool::get_reserve_a_token_address(reserve_data);
         let user1_balance =
             a_token_factory::balance_of(supply_user_address, a_token_address);
@@ -379,6 +383,10 @@ module aave_pool::borrow_logic_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_u2_token_address, true
+        );
+
         // set asset price for U_2
         token_helper::set_asset_price(
             aave_role_super_admin,
@@ -568,6 +576,10 @@ module aave_pool::borrow_logic_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_u2_token_address, true
+        );
+
         // set asset price
         token_helper::set_asset_price(
             aave_role_super_admin,
@@ -746,6 +758,10 @@ module aave_pool::borrow_logic_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_u2_token_address, true
+        );
+
         // set asset price
         token_helper::set_asset_price(
             aave_role_super_admin,
@@ -921,6 +937,10 @@ module aave_pool::borrow_logic_tests {
             supply_amount,
             user2_address,
             0
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_u2_token_address, true
         );
 
         // set asset price
@@ -1142,6 +1162,10 @@ module aave_pool::borrow_logic_tests {
             supply_amount,
             user2_address,
             0
+        );
+
+        supply_logic::set_user_use_reserve_as_collateral(
+            user2, underlying_u2_token_address, true
         );
 
         // set asset price

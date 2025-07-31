@@ -774,6 +774,10 @@ module aave_pool::pool_tests {
             0
         );
 
+        supply_logic::set_user_use_reserve_as_collateral(
+            aave_pool, underlying_u1_token_address, true
+        );
+
         // set debt ceiling
         let user_config_map = get_user_configuration(aave_pool_address);
         let reserve_config_map = get_reserve_configuration(underlying_u1_token_address);
