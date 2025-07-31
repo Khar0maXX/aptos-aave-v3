@@ -100,8 +100,7 @@ module aave_config::reserve_config {
         /// bit 152-167 liquidation protocol fee
         /// bit 168-175 eMode category
         /// bit 212-251 debt ceiling for isolation mode with (ReserveConfigurationMap::DEBT_CEILING_DECIMALS) decimals
-        /// bit 252: virtual accounting is enabled for the reserve
-        /// bit 253-255 unused
+        /// bit 252-255 unused
         data: u256
     }
 
