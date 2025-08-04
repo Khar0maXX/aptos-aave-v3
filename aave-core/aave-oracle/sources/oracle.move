@@ -559,6 +559,13 @@ module aave_oracle::oracle {
     ) acquires PriceOracleData {
         only_asset_listing_or_pool_admin(account);
         assert!(custom_price > 0, error_config::get_ezero_asset_custom_price());
+        if (is_asset_price_capped(asset)) {
+            let (capped_price, _) = get_asset_price_and_timestamp(asset);
+            assert!(
+                custom_price <= capped_price,
+                error_config::get_ecustom_price_above_price_cap()
+            );
+        };
         update_asset_custom_price(asset, custom_price);
     }
 
