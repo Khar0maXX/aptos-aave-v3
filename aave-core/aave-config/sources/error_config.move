@@ -255,6 +255,8 @@ module aave_config::error_config {
     const EINVALID_SNAPSHOT_RATIO: u64 = 1227;
     /// The snapshot timestamp is invalid
     const EINVALID_SNAPSHOT_TIMESTAMP: u64 = 1228;
+    /// The assigned custom price is above the price cap
+    const ECUSTOM_PRICE_ABOVE_PRICE_CAP: u64 = 1229;
 
     // aave_rate module error code range from 1301 to 1400.
     /// @notice Account is not the rate's owner
@@ -857,6 +859,12 @@ module aave_config::error_config {
     /// @return Error code as u64
     public fun get_einvalid_snapshot_timestamp(): u64 {
         EINVALID_SNAPSHOT_TIMESTAMP
+    }
+
+    /// @notice Returns the error code for custom price above price cap
+    /// @return Error code as u64
+    public fun get_ecustom_price_above_price_cap(): u64 {
+        ECUSTOM_PRICE_ABOVE_PRICE_CAP
     }
 
     /// @notice Returns the error code for invalid optimal usage ratio
